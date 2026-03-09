@@ -1,0 +1,457 @@
+\documentclass{article}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage[margin=0.8in]{geometry}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{adjustbox}
+\usepackage{enumitem}
+\usepackage{amssymb}
+\usepackage{amsmath}
+
+\newcommand{\gc}{\checkmark}
+\newcommand{\rx}{\textcolor{red}{$\times$}}
+
+\title{Research Gap Analysis: Continuous Latent Conditioning\\for Diffusion Language Models}
+\author{Auto-generated from literature and code analysis}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We analyzed 20 papers (10 with public code, 10 from PDF/abstract) related to diffusion language models (DLMs) for controllable text generation, conditional generation, and text editing via continuous latent conditioning. By cloning and reading each codebase (code papers) and extracting methods/results from arXiv (no-code papers, marked with $\dagger$), we identify critical gaps across methods, tasks, datasets, and evaluation. The central finding is that \textbf{two disconnected worlds} exist: discrete masked DLMs achieve strong language modeling but lack continuous control signals, while continuous latent DLMs offer rich controllability but bypass discrete tokens. No existing model bridges both worlds via joint attention (MMDiT) between discrete masked text and a learned continuous latent channel.
+\end{abstract}
+
+%% ============================================================
+\section{Papers Analyzed}
+%% ============================================================
+
+\noindent Papers marked with $\dagger$ have no public code and were analyzed from their PDF/abstract only.
+
+\begin{longtable}{@{}p{5.5cm}llp{5cm}@{}}
+\toprule
+\textbf{Paper} & \textbf{Venue} & \textbf{Year} & \textbf{Code / Source} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Paper} & \textbf{Venue} & \textbf{Year} & \textbf{Code / Source} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+%% --- Code papers ---
+Simple Guidance for Discrete Diffusion & ICLR & 2025 & \href{https://github.com/kuleshov-group/discrete-diffusion-guidance}{kuleshov-group/discrete-diffusion-guidance} \\
+Diffusion-LM & NeurIPS & 2022 & \href{https://github.com/XiangLi1999/Diffusion-LM}{XiangLi1999/Diffusion-LM} \\
+LD4LG (Latent Diff.\ for Lang.) & NeurIPS & 2023 & \href{https://github.com/justinlovelace/latent-diffusion-for-language}{justinlovelace/latent-diffusion-for-language} \\
+STAR-LDM & COLM & 2025 & \href{https://github.com/justinlovelace/STAR-LDM}{justinlovelace/STAR-LDM} \\
+LaDiR & arXiv & 2025 & \href{https://github.com/mk322/LaDiR}{mk322/LaDiR} \\
+PLANNER & NeurIPS & 2023 & \href{https://github.com/apple/ml-planner}{apple/ml-planner} \\
+ReMDM & arXiv & 2025 & \href{https://github.com/kuleshov-group/remdm}{kuleshov-group/remdm} \\
+CANDI & arXiv & 2025 & \href{https://github.com/patrickpynadath1/candi-diffusion}{patrickpynadath1/candi-diffusion} \\
+EDLM & ICLR & 2025 & \href{https://github.com/MinkaiXu/Energy-Diffusion-LLM}{MinkaiXu/Energy-Diffusion-LLM} \\
+MDLM & NeurIPS & 2024 & \href{https://github.com/kuleshov-group/mdlm}{kuleshov-group/mdlm} \\
+\midrule
+%% --- No-code papers (†) ---
+LDDM$\dagger$ & arXiv & 2025 & PDF only --- \href{https://arxiv.org/abs/2510.18114}{2510.18114} \\
+EdiText$\dagger$ & ACL & 2025 & PDF only --- \href{https://arxiv.org/abs/2502.19765}{2502.19765} \\
+Reasoning w/ Latent Tokens$\dagger$ & arXiv & 2026 & PDF only --- \href{https://arxiv.org/abs/2602.03769}{2602.03769} \\
+Diffusion-EAGS$\dagger$ & EMNLP & 2025 & PDF only --- \href{https://arxiv.org/abs/2411.06438}{2411.06438} \\
+Plug-and-Play Guidance$\dagger$ & NeurIPS & 2024 & PDF only --- \href{https://arxiv.org/abs/2410.02143}{2410.02143} \\
+ILRR$\dagger$ & arXiv & 2026 & PDF only --- \href{https://arxiv.org/abs/2601.21647}{2601.21647} \\
+SLD$\dagger$ & ACL & 2025 & PDF only --- \href{https://arxiv.org/abs/2412.11333}{2412.11333} \\
+Token Assorted$\dagger$ & arXiv & 2025 & PDF only --- \href{https://arxiv.org/abs/2502.03275}{2502.03275} \\
+Theory-Informed CFG$\dagger$ & arXiv & 2025 & PDF only --- \href{https://arxiv.org/abs/2507.08965}{2507.08965} \\
+Debiasing Guidance SMC$\dagger$ & ICLR & 2025 & PDF only --- \href{https://arxiv.org/abs/2502.06079}{2502.06079} \\
+\end{longtable}
+
+%% ============================================================
+\section{Methods Analysis}
+%% ============================================================
+
+\subsection{Comparison}
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Paper} & \makecell{\textbf{Text}\\\textbf{Diffusion}} & \makecell{\textbf{Latent}\\\textbf{Space}} & \makecell{\textbf{Latent}\\\textbf{Design}} & \makecell{\textbf{Guidance}\\\textbf{Type}} & \makecell{\textbf{Joint}\\\textbf{Attention}} & \makecell{\textbf{Training}\\\textbf{Scheme}} \\
+\midrule
+%% --- Code papers ---
+Simple Guidance & Discrete masked & \textcolor{red}{None} & --- & CFG + CBG & No & Single stage \\
+Diffusion-LM & Continuous emb. & Word embeddings & 16--128D emb. & Classifier grad. & No & Single stage \\
+LD4LG & Continuous latent & \textcolor{green!60!black}{VAE (32$\times$256)} & Perceiver AE & CFG & No & Two-stage \\
+STAR-LDM & Continuous latent & \textcolor{green!60!black}{Sent-T5 (768D)} & 8 soft prompts & Classifier grad. & No & Joint (freeze enc.) \\
+LaDiR & Continuous latent & \textcolor{green!60!black}{VAE (3$\times$128)} & LLaMA LoRA AE & CFG + Reward & No & Two-stage \\
+PLANNER & Continuous latent & \textcolor{green!60!black}{AE (16$\times$1024)} & CNN/BERT enc. & CFG & No & Two-stage \\
+ReMDM & Discrete masked & \textcolor{red}{None} & --- & Remasking & No & Single stage \\
+CANDI & Hybrid disc+cont & \textcolor{orange}{Token-level ($V$D)} & One-hot + noise & None explicit & No & Single stage \\
+EDLM & Discrete masked & \textcolor{red}{None (energy)} & --- & Energy IS & No & Two-stage (freeze) \\
+MDLM & Discrete masked & \textcolor{red}{None} & --- & None & No & Single stage \\
+\midrule
+%% --- No-code papers (†) ---
+LDDM$\dagger$ & \textbf{Both: masked + cont.} & \textcolor{green!60!black}{Learned (dim $d$)} & Coupled ELBO & None (unconditional) & \textcolor{orange}{Partial (FUJI)} & Joint ELBO \\
+EdiText$\dagger$ & Continuous emb. & Embedding space & SEDD embeddings & Self-conditioning & No & Fine-tune \\
+Latent Tokens$\dagger$ & Discrete masked & \textcolor{orange}{Mask tokens} & Implicit (mask) & None & No & Standard \\
+Diffusion-EAGS$\dagger$ & Discrete masked & \textcolor{red}{None} & --- & MRF + Gibbs & No & Fine-tune \\
+Plug-and-Play$\dagger$ & Discrete masked & \textcolor{red}{None} & --- & IS (training-free) & No & None (inference) \\
+ILRR$\dagger$ & Discrete masked & \textcolor{red}{None} & --- & Activation align. & No & None (inference) \\
+SLD$\dagger$ & Continuous latent & \textcolor{green!60!black}{Segment-level} & Adv. + contrastive & Latent guidance & No & Two-stage \\
+Token Assorted$\dagger$ & AR (latent + text) & \textcolor{green!60!black}{VQ-VAE discrete} & Discrete codebook & None & No & Multi-stage \\
+Theory CFG$\dagger$ & Discrete masked & \textcolor{red}{None} & --- & CFG (col-norm fix) & No & None (inference) \\
+Debias SMC$\dagger$ & Discrete masked & \textcolor{red}{None} & --- & SMC (unbiased) & No & None (inference) \\
+\midrule
+\textbf{Ours (MMDiT)} & \textbf{Discrete masked} & \textbf{\textcolor{green!60!black}{Learned cont.}} & \textbf{MMDiT joint} & \textbf{Latent + CFG} & \textbf{\textcolor{green!60!black}{Yes}} & \textbf{Joint E2E} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\caption{Methods comparison across all 20 papers. $\dagger$ = analyzed from PDF (no public code). \textcolor{red}{Red} = no continuous latent. \textcolor{green!60!black}{Green} = continuous latent present. \textcolor{orange}{Orange} = partial/token-level continuous.}
+\end{table}
+
+\subsection{Identified Gaps}
+
+\begin{enumerate}[label=\textbf{M\arabic*.}, leftmargin=2em]
+    \item \textbf{No discrete masked DLM has a learned continuous latent channel for conditioning.}
+    MDLM, ReMDM, EDLM, Simple Guidance, Diffusion-EAGS$\dagger$, Plug-and-Play$\dagger$, ILRR$\dagger$, Theory CFG$\dagger$, and Debiasing SMC$\dagger$ all operate purely in discrete token space. CANDI adds continuous noise to one-hot vectors but does not learn a separate compressed latent. The 9 discrete-only papers (7 no-code$\dagger$, 2 code) have no continuous control surface for generation steering.
+
+    \item \textbf{No continuous latent DLM uses discrete masked diffusion for text.}
+    LD4LG, PLANNER, STAR-LDM, LaDiR, SLD$\dagger$, and EdiText$\dagger$ all use continuous Gaussian diffusion for text generation (embedding or latent space). None couples its latent with a masked discrete text process---missing the training efficiency and sample quality of MDLM/SEDD/LLaDA.
+
+    \item \textbf{LDDM$\dagger$ is the closest competitor but lacks MMDiT, controllability, and code.}
+    LDDM's FUJI variant does joint discrete+continuous denoising, but: (a) uses alternating updates, not full joint attention; (b) evaluates only unconditional perplexity (no controllable/conditional generation); (c) has no public code. Our MMDiT approach provides full joint attention and targets controllability as a first-class capability.
+
+    \item \textbf{No model uses joint attention (MMDiT) between discrete text and continuous latent.}
+    All 20 papers use either discrete-only attention, continuous-only attention, or conditioning via concatenation/cross-attention from a frozen encoder. The MMDiT paradigm---shared QKV attention with modality-specific FFNs---is unexplored for text+latent.
+
+    \item \textbf{Two-stage training dominates; joint end-to-end training is rare.}
+    LD4LG, PLANNER, LaDiR, EDLM, SLD$\dagger$ all train components separately. STAR-LDM trains jointly but freezes the encoder. LDDM$\dagger$ proposes joint ELBO training but with no public implementation. Joint end-to-end training of latent encoder + discrete text diffusion via MMDiT remains undemonstrated.
+
+    \item \textbf{Guidance methods exist in silos, never unified in one architecture.}
+    Discrete DLMs: CFG (Simple Guidance), energy IS (EDLM), remasking (ReMDM), MRF+Gibbs (Diffusion-EAGS$\dagger$), importance sampling (Plug-and-Play$\dagger$), activation alignment (ILRR$\dagger$), column-normalized CFG (Theory CFG$\dagger$), SMC (Debiasing SMC$\dagger$). Continuous: classifier gradients (Diffusion-LM, STAR-LDM), reward (LaDiR), latent guidance (SLD$\dagger$). A unified architecture supporting both continuous-latent and discrete-token guidance does not exist.
+\end{enumerate}
+
+%% ============================================================
+\section{Capabilities Analysis}
+%% ============================================================
+
+\subsection{Comparison}
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+\textbf{Paper} & \makecell{\textbf{Ctrl.}\\\textbf{Gen.}} & \makecell{\textbf{Seq2Seq /}\\\textbf{Cond.}} & \makecell{\textbf{Text}\\\textbf{Edit}} & \makecell{\textbf{Latent}\\\textbf{Interp.}} & \makecell{\textbf{Grad.}\\\textbf{Guid.}} & \makecell{\textbf{Reward}\\\textbf{Guid.}} & \makecell{\textbf{Training-}\\\textbf{Free Guid.}} & \makecell{\textbf{Long}\\\textbf{Form}} \\
+\midrule
+%% Code papers
+Simple Guidance & Class & Class & \rx & \rx & Approx. & \rx & \rx & \rx \\
+Diffusion-LM & Attr. & Infill & Partial & \rx & \gc & \rx & \rx & \rx \\
+LD4LG & CFG & \gc Seq2Seq & Latent & Limited & \rx & \rx & \rx & \rx \\
+STAR-LDM & Attr. & Open-end & Soft prompt & \rx & \gc & \rx & \rx & \rx \\
+LaDiR & CFG+R & Reasoning & Iter. & \rx & \rx & \gc & \rx & \rx \\
+PLANNER & CFG & Summ. & Interp. & \gc & \rx & \rx & \rx & \gc \\
+ReMDM & Remask & Prompt & Sel. remask & \rx & \rx & \rx & \rx & \rx \\
+CANDI & Hybrid & Prompt & Cont. ref. & \rx & \rx & \rx & \rx & \rx \\
+EDLM & Energy & Implicit & \rx & \rx & \rx (IS) & \rx & \rx & \rx \\
+MDLM & \rx & \rx & \rx & \rx & \rx & \rx & \rx & \rx \\
+\midrule
+%% No-code papers (†)
+LDDM$\dagger$ & \rx & \rx & \rx & \rx & \rx & \rx & \rx & \rx \\
+EdiText$\dagger$ & Self-cond & \rx & \gc SDEdit & \rx & \rx & \rx & \gc & \rx \\
+Latent Tokens$\dagger$ & \rx & \rx & \rx & Token count & \rx & \rx & \rx & \rx \\
+Diff-EAGS$\dagger$ & MRF & \gc Cond. & \rx & \rx & \rx & \rx & \rx & \rx \\
+P\&P$\dagger$ & IS & \rx & \rx & \rx & \rx & \rx & \gc & \rx \\
+ILRR$\dagger$ & Act. align & \rx & \rx & \rx & \rx & \rx & \gc & \rx \\
+SLD$\dagger$ & Latent & Summ./QA & \rx & \rx & \rx & \rx & \rx & \gc \\
+Token Asst.$\dagger$ & \rx & CoT & \rx & \rx & \rx & \rx & \rx & \gc \\
+Theory CFG$\dagger$ & CFG fix & \rx & \rx & \rx & \rx & \rx & \gc & \rx \\
+Debias SMC$\dagger$ & SMC & \rx & \rx & \rx & \rx & \rx & \gc & \rx \\
+\midrule
+\textbf{Ours (MMDiT)} & \textbf{\gc} & \textbf{\gc} & \textbf{\gc} & \textbf{\gc} & \textbf{\gc} & \textbf{\gc} & \textbf{\gc} & --- \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\caption{Capability comparison. $\dagger$ = no public code. \gc = full support. \rx = not supported.}
+\end{table}
+
+\subsection{Identified Gaps}
+
+\begin{enumerate}[label=\textbf{C\arabic*.}, leftmargin=2em]
+    \item \textbf{No discrete DLM supports seq2seq / encoder-decoder conditioning.}
+    All discrete masked DLMs (MDLM, ReMDM, EDLM, Simple Guidance) are unconditional. Diffusion-EAGS$\dagger$ conditions on a prefix via MRF but cannot do full encoder-decoder seq2seq. The only seq2seq-capable models (LD4LG, SLD$\dagger$) use continuous diffusion. A continuous latent channel could serve as the encoder for a discrete masked DLM.
+
+    \item \textbf{Gradient-based guidance in discrete DLMs requires expensive approximations.}
+    Simple Guidance's CBG evaluates classifiers on every possible token replacement ($O(V \times L)$ per step). Plug-and-Play$\dagger$ uses importance sampling. ILRR$\dagger$ aligns activations. A continuous latent enables cheap gradient-based guidance: compute $\nabla_z \log p(y|z)$ in continuous space, then joint attention propagates the signal to text.
+
+    \item \textbf{Latent interpolation is unexplored in discrete text DLMs.}
+    Only PLANNER demonstrates interpolation producing smoothly varying text, but uses continuous text diffusion. Latent Tokens$\dagger$ shows masked tokens carry computational meaning, but does not explore geometric interpolation. For a discrete DLM + continuous latent, interpolation between latents to produce smoothly varying \emph{discrete} text is undemonstrated.
+
+    \item \textbf{Latent-steered text editing (SDEdit for text) is unexplored in discrete DLMs.}
+    EdiText$\dagger$ adapts SDEdit for text but uses continuous embedding space, not discrete masked diffusion. ReMDM edits via selective remasking but has no continuous signal to steer edits. The combination---mask text tokens, provide a new continuous latent, joint-denoise guided by the latent---has never been demonstrated.
+
+    \item \textbf{Reward guidance exists for continuous latent DLMs but not for discrete+latent hybrids.}
+    LaDiR demonstrates reward-guided generation via gradients in latent space. No discrete masked DLM has reward guidance. A continuous latent channel in a discrete DLM would enable reward guidance without modifying the discrete mechanism.
+
+    \item \textbf{Training-free guidance methods are never combined with a learned latent channel.}
+    Five no-code papers (Plug-and-Play$\dagger$, ILRR$\dagger$, Theory CFG$\dagger$, Debiasing SMC$\dagger$, EdiText$\dagger$) provide training-free guidance for discrete DLMs. None has access to a continuous latent channel, which would make training-free guidance more effective (smooth gradients in latent space vs.\ combinatorial search in token space).
+\end{enumerate}
+
+%% ============================================================
+\section{Tasks and Datasets Analysis}
+%% ============================================================
+
+\subsection{Tasks Comparison}
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2.5pt}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lccccccccc@{}}
+\toprule
+\textbf{Paper} & \makecell{\textbf{Uncond.}\\\textbf{LM}} & \makecell{\textbf{Attr.}\\\textbf{Control}} & \makecell{\textbf{Seq2Seq}\\\textbf{(NLU)}} & \makecell{\textbf{Text}\\\textbf{Editing}} & \makecell{\textbf{Reason-}\\\textbf{ing}} & \makecell{\textbf{Infill}} & \makecell{\textbf{Long}\\\textbf{Form}} & \makecell{\textbf{Protein/}\\\textbf{Mol.}} & \makecell{\textbf{Latent}\\\textbf{Analysis}} \\
+\midrule
+Simple Guidance & \gc & Class & & & & & & QM9/DNA & \\
+Diffusion-LM & \gc & \gc & & Partial & & \gc & & & \\
+LD4LG & \gc & \gc & \gc & & & & & & \\
+STAR-LDM & \gc & \gc & & & & & & & \\
+LaDiR & & & & & \gc & & & & \\
+PLANNER & & \gc & \gc & & & & \gc & & \gc \\
+ReMDM & \gc & & & & & & & & \\
+CANDI & \gc & & & & & & & & \\
+EDLM & \gc & & & & & & & & \\
+MDLM & \gc & & & & & & & & \\
+\midrule
+LDDM$\dagger$ & \gc & & & & & & & & \\
+EdiText$\dagger$ & & \gc & & \gc & & & & & \\
+Latent Tokens$\dagger$ & \gc & & & & & & & & \\
+Diff-EAGS$\dagger$ & \gc & \gc & \gc & & & & & & \\
+P\&P$\dagger$ & & \gc & & & & & & \gc & \\
+ILRR$\dagger$ & & \gc & & & & & & & \\
+SLD$\dagger$ & & & \gc & & & & \gc & & \\
+Token Asst.$\dagger$ & & & & & \gc & & \gc & & \\
+Theory CFG$\dagger$ & & \gc & & & & & & & \\
+Debias SMC$\dagger$ & & \gc & & & & & & & \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\caption{Tasks evaluated by each paper. $\dagger$ = no public code.}
+\end{table}
+
+\subsection{Datasets Comparison}
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lcccccccccc@{}}
+\toprule
+\textbf{Paper} & \makecell{\textbf{LM1B}} & \makecell{\textbf{OWT}} & \makecell{\textbf{Wiki-}\\\textbf{Text}} & \makecell{\textbf{AG}\\\textbf{News}} & \makecell{\textbf{SST/}\\\textbf{Yelp}} & \makecell{\textbf{E2E/}\\\textbf{QQP}} & \makecell{\textbf{ROC}\\\textbf{Stories}} & \makecell{\textbf{Plan.}\\\textbf{Bench}} & \makecell{\textbf{Prot./}\\\textbf{Mol.}} & \makecell{\textbf{Custom}} \\
+\midrule
+Simple Guidance & & \gc & & & & & & & QM9/DNA & \\
+Diffusion-LM & & & & & & \gc & \gc & & & Synth. \\
+LD4LG & \gc & & \gc & \gc & & \gc & \gc & & & \\
+STAR-LDM & & & & & & & \gc & & & News/Wiki \\
+LaDiR & & & & & & & & \gc & & Blocks/Maze \\
+PLANNER & & & & \gc & & & \gc & & & Wikiplots \\
+ReMDM & & \gc & & & & & & & & \\
+CANDI & & \gc & & & & & & & & \\
+EDLM & & \gc & & & & & & & & \\
+MDLM & \gc & \gc & & & & & & & & \\
+\midrule
+LDDM$\dagger$ & \gc & & & & & & & & & \\
+EdiText$\dagger$ & & & & & Yelp & & & & & Amazon \\
+Latent Tokens$\dagger$ & & & & & & & & & & LAMBADA \\
+Diff-EAGS$\dagger$ & & & & \gc & & \gc & & & & \\
+P\&P$\dagger$ & & & & & & & & & \gc & \\
+ILRR$\dagger$ & & & & & SST & & & & & LLaDA \\
+SLD$\dagger$ & & & & & & & & & & WritingPr. \\
+Token Asst.$\dagger$ & & & & & & & & & & GSM8K/ARC \\
+Theory CFG$\dagger$ & & & & & & & & & & N/A (theory) \\
+Debias SMC$\dagger$ & & & & & & & & & & Sudoku \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\caption{Datasets used by each paper. $\dagger$ = no public code.}
+\end{table}
+
+\subsection{Identified Gaps}
+
+\begin{enumerate}[label=\textbf{TD\arabic*.}, leftmargin=2em]
+    \item \textbf{No discrete DLM evaluated on controllable generation benchmarks.}
+    Discrete DLMs (MDLM, EDLM, ReMDM, CANDI, LDDM$\dagger$) are only evaluated on unconditional perplexity (LM1B, OWT). Simple Guidance is the only exception (class-conditional on QM9/CIFAR/DNA). No discrete DLM has been evaluated on text attribute control (sentiment, topic, style) as done by Diffusion-LM and STAR-LDM.
+
+    \item \textbf{No editing benchmark exists for DLMs.}
+    EdiText$\dagger$ evaluates editing on Yelp/Amazon with fluency + attribute accuracy, but uses ad-hoc evaluation. No standardized editing benchmark exists for DLMs analogous to image editing benchmarks. Metrics for edit locality, semantic preservation, and control precision are missing entirely.
+
+    \item \textbf{Datasets are fragmented---no common evaluation suite.}
+    Code papers span LM1B, OWT, WikiText, ROCStories, E2E, AG News with minimal overlap. Only 2 papers share LM1B (MDLM, LD4LG) and 4 share OWT (Simple Guidance, ReMDM, CANDI, EDLM, MDLM). Cross-paper comparison is nearly impossible. LDDM$\dagger$ reports best PPL on LM1B but uses different tokenization/splits than MDLM.
+
+    \item \textbf{Reasoning benchmarks (GSM8K, Sudoku, Blocksworld) only appear in 3 papers.}
+    LaDiR evaluates on Blocksworld/Maze, Token Assorted$\dagger$ on GSM8K/ARC, Debiasing SMC$\dagger$ on Sudoku. No controllable DLM evaluates on standard reasoning benchmarks. This was a key reviewer criticism of CCDD (``lacks Sudoku, coding, GSM8k'').
+
+    \item \textbf{Latent space analysis (interpolation, arithmetic) is underexplored.}
+    Only PLANNER demonstrates latent interpolation. For a joint discrete-continuous DLM, demonstrating that interpolating the continuous latent produces smoothly varying discrete text would validate the latent space has meaningful geometric structure.
+\end{enumerate}
+
+%% ============================================================
+\section{Evaluation Analysis}
+%% ============================================================
+
+\subsection{Comparison}
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+\textbf{Paper} & \textbf{PPL} & \makecell{\textbf{Gen-}\\\textbf{PPL}} & \textbf{MAUVE} & \textbf{BLEU} & \makecell{\textbf{Ctrl.}\\\textbf{Acc.}} & \makecell{\textbf{Diver-}\\\textbf{sity}} & \makecell{\textbf{LLM}\\\textbf{Judge}} & \makecell{\textbf{Efficiency}\\\textbf{(NFE/FLOPs)}} \\
+\midrule
+Simple Guidance & \gc & & & & \gc & & & \\
+Diffusion-LM & & \gc & & \gc & \gc & \gc & & \\
+LD4LG & \gc & \gc & \gc & \gc & & \gc & & \\
+STAR-LDM & & & & & \gc & & \gc & \\
+LaDiR & & & & & \gc & \gc & & \\
+PLANNER & & \gc & & \gc & & \gc & & \\
+ReMDM & \gc & \gc & \gc & & & \gc & & \gc \\
+CANDI & \gc & & & & & & & \\
+EDLM & \gc & \gc & & & & \gc & & \\
+MDLM & \gc & \gc & & & & & & \\
+\midrule
+LDDM$\dagger$ & \gc & & & & & & & \\
+EdiText$\dagger$ & & & & & \gc & & & \\
+Latent Tokens$\dagger$ & \gc & & & & & & & \\
+Diff-EAGS$\dagger$ & & & & \gc & \gc & \gc & & \gc \\
+P\&P$\dagger$ & & & & & \gc & & & \\
+ILRR$\dagger$ & & & & & \gc & & & \\
+SLD$\dagger$ & & & & \gc & & & \gc & \\
+Token Asst.$\dagger$ & & & & & \gc & & & \gc \\
+Theory CFG$\dagger$ & & & \gc & & \gc & & & \\
+Debias SMC$\dagger$ & & & & & \gc & & & \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\caption{Evaluation metrics used. $\dagger$ = no public code.}
+\end{table}
+
+\subsection{Identified Gaps}
+
+\begin{enumerate}[label=\textbf{E\arabic*.}, leftmargin=2em]
+    \item \textbf{No unified evaluation across controllable quality + generative quality.}
+    Papers either evaluate perplexity (discrete DLMs: MDLM, EDLM, LDDM$\dagger$) or control accuracy (guidance papers: Diffusion-LM, ILRR$\dagger$, Theory CFG$\dagger$). No model is evaluated on both axes simultaneously. A latent-conditioned DLM must report both PPL \emph{and} control accuracy to demonstrate the latent does not hurt generation quality.
+
+    \item \textbf{No editing faithfulness metrics.}
+    No paper measures how well edits preserve unedited content while changing the targeted attribute. EdiText$\dagger$ uses fluency + attribute accuracy but not edit locality or semantic preservation scores. Standard metrics (PPL, BLEU) cannot capture edit precision.
+
+    \item \textbf{No comparison of guidance methods under matched architecture.}
+    Simple Guidance tests CFG/CBG on UDLM. EDLM tests energy IS on MDLM. Diffusion-LM tests classifier gradients on continuous diffusion. Plug-and-Play$\dagger$ tests importance sampling on MDLM. ILRR$\dagger$ tests activation alignment on LLaDA. Theory CFG$\dagger$ provides theoretical analysis. Debiasing SMC$\dagger$ tests SMC on generic discrete DLMs. \textbf{No paper compares all these methods on the same architecture}---making it impossible to determine which guidance approach is best.
+
+    \item \textbf{Efficiency metrics are largely absent.}
+    Only ReMDM, Diffusion-EAGS$\dagger$, and Token Assorted$\dagger$ report any efficiency metrics (NFE, wall-clock time). No paper reports FLOPs-per-sample or the cost-quality tradeoff. This was a reviewer criticism of CCDD (``training/inference cost inadequately explored'').
+
+    \item \textbf{LLM-as-judge evaluation is underused.}
+    Only STAR-LDM and SLD$\dagger$ use LLM judges. For controllable and conditional generation, LLM judges can evaluate semantic quality, instruction-following, and coherence---dimensions that PPL and BLEU miss. An open gap for DLM evaluation methodology.
+\end{enumerate}
+
+%% ============================================================
+\section{Architecture Analysis: The Two Worlds}
+%% ============================================================
+
+The 20-paper analysis confirms two disconnected paradigms:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}p{3cm}p{5.5cm}p{5.5cm}@{}}
+\toprule
+& \textbf{World 1: Discrete Masked DLMs} & \textbf{World 2: Continuous Latent DLMs} \\
+\midrule
+\textbf{Papers (code)} & MDLM, ReMDM, EDLM, Simple Guidance, CANDI & Diffusion-LM, LD4LG, STAR-LDM, LaDiR, PLANNER \\
+\textbf{Papers ($\dagger$)} & LDDM$\dagger$, Latent Tokens$\dagger$, Diff-EAGS$\dagger$, P\&P$\dagger$, ILRR$\dagger$, Theory CFG$\dagger$, Debias SMC$\dagger$ & EdiText$\dagger$, SLD$\dagger$, Token Assorted$\dagger$ \\
+\textbf{Text gen.} & Discrete tokens, masked diffusion & Continuous embeddings/latents \\
+\textbf{Controllability} & Limited (class-cond, remasking, energy, IS, activation align., MRF, SMC) & Rich (CFG, classifier grad, reward, interpolation, latent guidance) \\
+\textbf{Training} & Efficient (masked CE loss) & Expensive (MSE + decoder) \\
+\textbf{Sample quality} & Strong (scales to 8B: LLaDA, Dream) & Moderate (requires good decoder) \\
+\textbf{Editing} & Binary (mask/unmask) & Smooth (noise level, latent manipulation) \\
+\bottomrule
+\end{tabular}
+\caption{The two disconnected worlds of text diffusion models. Including 20 papers analyzed.}
+\end{table}
+
+\textbf{Key observation:} World 1 has 12 papers (5 code, 7 $\dagger$) but only 2 support any form of conditional generation beyond prompting. World 2 has 8 papers (5 code, 3 $\dagger$) with much richer controllability but weaker text quality. LDDM$\dagger$ is the only paper that partially straddles both worlds (FUJI variant), but it evaluates only unconditional perplexity and has no controllability experiments.
+
+%% ============================================================
+\section{Cross-Cutting Research Gaps}
+%% ============================================================
+
+The most important gaps span multiple dimensions:
+
+\begin{enumerate}
+    \item \textbf{The Discrete-Latent Bridge Gap.}
+    Two mature paradigms exist in isolation: discrete masked DLMs (MDLM $\to$ LLaDA $\to$ Dream 7B; 12 papers in World 1) achieve strong language modeling, while continuous latent DLMs (LD4LG, PLANNER, STAR-LDM, LaDiR, SLD$\dagger$; 8 papers in World 2) achieve rich controllability. \textbf{No model combines discrete masked text diffusion with a learned continuous latent channel through joint attention.} LDDM$\dagger$ couples both diffusion types but uses alternating updates (not joint attention) and has no controllability. This is the core contribution opportunity.
+
+    \item \textbf{The Latent-Steered Editing Gap.}
+    ReMDM shows discrete DLMs can edit via remasking. EdiText$\dagger$ shows continuous DLMs can edit via SDEdit-style noising/denoising. \textbf{No model combines masking-based editing with continuous latent steering.} The paradigm---mask text tokens, provide a different latent (from a different style/topic), joint-denoise to fill masks guided by the new latent---is the ``SDEdit for text'' concept that no paper has demonstrated in a discrete DLM.
+
+    \item \textbf{The Guidance Unification Gap.}
+    Eight distinct guidance mechanisms exist across the 20 papers: CFG, CBG, energy IS, remasking, MRF+Gibbs, importance sampling, activation alignment, and SMC (World 1); classifier gradients, reward guidance, and latent guidance (World 2). \textbf{A latent-conditioned discrete DLM would unify these}: continuous latent enables gradient/reward guidance while discrete text preserves token-level CFG and remasking. No paper explores this unification.
+
+    \item \textbf{The Evaluation Completeness Gap.}
+    CCDD (seed paper) was rejected partly for ``limited evaluation scope.'' Across all 20 papers, no single model is evaluated on: unconditional PPL + controllable generation accuracy + text editing quality + reasoning benchmarks + latent space analysis + efficiency metrics. A comprehensive evaluation suite demonstrating the latent channel's benefit across all dimensions is missing.
+
+    \item \textbf{The Theory-Practice Gap for Guidance.}
+    Theory-Informed CFG$\dagger$ proves that high early-stage guidance harms quality and column normalization fixes instability. Debiasing SMC$\dagger$ proves standard guidance is biased and SMC corrects it. \textbf{Neither theory has been validated on a model with both continuous and discrete control surfaces.} Our MMDiT model could validate these theoretical findings: does column normalization help CFG on the latent channel? Does SMC improve when the continuous latent provides a better proposal distribution?
+\end{enumerate}
+
+%% ============================================================
+\section{Recommended Research Directions}
+%% ============================================================
+
+\begin{enumerate}
+    \item \textbf{Direction 1: MMDiT Joint Attention for Discrete Text + Continuous Latent.}
+    \begin{itemize}[nosep]
+        \item \textbf{What:} Extend MMDiT so discrete masked text tokens and continuous latent vectors share QKV attention with independent timesteps and modality-specific FFNs. Joint end-to-end training via combined masked CE + MSE loss.
+        \item \textbf{Build on:} MDLM (discrete text loss) + LD4LG (latent design) + LDDM$\dagger$ (coupled ELBO theory) + your existing \texttt{MultimodalMMDiT} codebase.
+        \item \textbf{Contribution:} First model bridging World 1 and World 2. Inherits MDLM's text quality with LD4LG/PLANNER's controllability. Addresses CCDD reviewers' criticism with broader evaluation.
+    \end{itemize}
+
+    \item \textbf{Direction 2: Latent-Steered Text Editing in Discrete DLMs (SDEdit for Text).}
+    \begin{itemize}[nosep]
+        \item \textbf{What:} Mask specific text tokens, replace the continuous latent with a new control signal, joint-denoise to fill masks guided by the new latent. Evaluate on style transfer, paraphrase, and topic-controlled editing.
+        \item \textbf{Build on:} ReMDM (remasking) + EdiText$\dagger$ (SDEdit-for-text concept) + PLANNER (latent interpolation) + ILRR$\dagger$ (activation steering as baseline).
+        \item \textbf{Contribution:} First continuous-signal-steered editing in a discrete DLM. Novel paradigm impossible for AR models and unexplored in existing DLMs. Fills Gap C4.
+    \end{itemize}
+
+    \item \textbf{Direction 3: Unified Guidance via Continuous Latent Channel.}
+    \begin{itemize}[nosep]
+        \item \textbf{What:} Show that a continuous latent channel enables multiple guidance methods in a single discrete DLM: CFG on latent, classifier gradients via $\nabla_z \log p(y|z)$, reward guidance via $\nabla_z R(z)$---all propagated to text through joint attention. Compare against all 8 discrete-only guidance methods (Simple Guidance, EDLM, Plug-and-Play$\dagger$, ILRR$\dagger$, Theory CFG$\dagger$, Debiasing SMC$\dagger$, ReMDM, Diffusion-EAGS$\dagger$).
+        \item \textbf{Build on:} Simple Guidance (CFG/CBG baseline) + LaDiR (reward guidance in latent) + STAR-LDM (classifier guidance) + Theory CFG$\dagger$ (column normalization) + Debiasing SMC$\dagger$ (unbiased sampling).
+        \item \textbf{Contribution:} Demonstrates continuous latent as a universal guidance interface. Eliminates task-specific guidance mechanisms. Fills Gaps M6, C2, C6.
+    \end{itemize}
+
+    \item \textbf{Direction 4: Conditional Generation (Seq2Seq) via Latent Conditioning.}
+    \begin{itemize}[nosep]
+        \item \textbf{What:} Encode source text (question, document, prompt) into continuous latent via the MMDiT encoder side, then discrete DLM generates target text conditioned on this latent. Evaluate on summarization, QA, paraphrase, and reasoning benchmarks (GSM8K, Blocksworld).
+        \item \textbf{Build on:} LD4LG (seq2seq via latent) + MDLM (discrete baseline) + LaDiR (reasoning via latent) + Diffusion-EAGS$\dagger$ (conditional MRF as comparison).
+        \item \textbf{Contribution:} First discrete masked DLM with seq2seq capability. Addresses CCDD reviewers' demand for ``reasoning benchmarks.'' Fills Gap C1.
+    \end{itemize}
+
+    \item \textbf{Direction 5: Latent Space Geometry and Comprehensive Evaluation.}
+    \begin{itemize}[nosep]
+        \item \textbf{What:} (a) Analyze latent interpolation producing smoothly varying discrete text. (b) Demonstrate latent arithmetic ($z_\text{formal} - z_\text{casual} + z_\text{input}$). (c) Report full evaluation suite: unconditional PPL (LM1B, OWT), controllable generation accuracy (sentiment, topic), editing quality (Yelp style transfer), reasoning (GSM8K), and efficiency (NFE, FLOPs, wall-clock).
+        \item \textbf{Build on:} PLANNER (interpolation) + EdiText$\dagger$ (editing eval protocol) + Token Assorted$\dagger$ (reasoning benchmarks) + ReMDM (efficiency reporting).
+        \item \textbf{Contribution:} First demonstration of meaningful latent geometry in a joint discrete-continuous DLM. Comprehensive evaluation addresses all reviewer criticisms of CCDD. Fills Gaps TD5, E1, E4.
+    \end{itemize}
+\end{enumerate}
+
+\end{document}

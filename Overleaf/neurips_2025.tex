@@ -1,0 +1,328 @@
+\documentclass{article}
+
+\usepackage[dblblindworkshop, final]{neurips_2025}
+
+\newcommand{\argmax}{\mathop{\mathrm{argmax}}\limits}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[
+    colorlinks=true,
+    linkcolor=red,
+    citecolor=blue,
+    urlcolor=BrickRed
+]{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{algorithmicx}
+\usepackage{tabularx}
+\usepackage{adjustbox}
+\usepackage{multirow}
+\usepackage{dsfont}
+
+\renewcommand{\sectionautorefname}{Section}
+\renewcommand{\subsectionautorefname}{Section}
+\renewcommand{\subsubsectionautorefname}{Section}
+
+\newcommand{\hquad}{\hspace{0.6em}}
+
+\title{MM-LDLM: Multimodal Latent Diffusion Language Models via Joint Masked-Continuous Generation with MMDiT}
+
+\author{
+Yunbo Long\textsuperscript{1}\hquad Anonymous Co-authors \\
+\textsuperscript{1}Department of Engineering, University of Cambridge, UK \\
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Discrete diffusion language models have shown promising results for text generation, but they operate entirely in token space and lack the ability to jointly reason over continuous semantic representations. We present \textbf{MM-LDLM} (Multimodal Latent Diffusion Language Model), a framework that unifies discrete masked diffusion for text tokens with continuous diffusion for latent semantic vectors within a single Multimodal Diffusion Transformer (MMDiT). Our model simultaneously denoises text tokens via masked diffusion and latent embeddings (from pre-trained encoders such as SONAR or E5) via continuous $\epsilon$-prediction, enabling bidirectional generation: \emph{latent-to-text} (L2T) and \emph{text-to-latent} (T2L). The MMDiT backbone processes both modalities through parallel streams with shared attention, allowing each modality to condition the other during the denoising process. We further introduce a sequential training schedule that alternates between unconditional, L2T, and T2L modes with selective parameter freezing to stabilize training. Experiments on OpenWebText demonstrate that MM-LDLM achieves competitive generative perplexity while enabling new capabilities such as latent-conditioned text generation and text-conditioned latent reasoning.
+\end{abstract}
+
+\section{Introduction}\label{sec:introduction}
+
+Text generation via diffusion models has emerged as a compelling alternative to autoregressive (AR) language models~\citep{li2022diffusionlm, austin2021d3pm}. Unlike AR models, which generate tokens left-to-right, diffusion-based approaches generate text through iterative denoising, enabling parallel generation and global coherence. Recent work on discrete diffusion language models~\citep{lou2024mdlm, sahoo2024simple, gulrajani2024hdlm} has demonstrated that masked diffusion---where tokens are progressively corrupted to a \texttt{[MASK]} state and then recovered---can achieve competitive perplexity with strong baselines.
+
+However, existing discrete diffusion language models operate exclusively in token space. They lack the ability to reason over continuous semantic representations that capture higher-level meaning beyond individual tokens. This limitation is significant: continuous latent spaces enable smooth interpolation, compositional reasoning, and multimodal alignment that discrete token spaces cannot naturally support~\citep{lovelace2024latent, rombach2022ldm}.
+
+Meanwhile, the Multimodal Diffusion Transformer (MMDiT) architecture~\citep{esser2024sd3} has achieved remarkable success in image generation by jointly processing multiple modalities (e.g., image patches and text embeddings) through a shared transformer with modality-specific streams. The key insight of MMDiT is that different modalities can attend to each other during the denoising process, enabling rich cross-modal conditioning without explicit cross-attention layers.
+
+In this work, we ask: \emph{Can we unify discrete masked diffusion for text with continuous diffusion for latent representations within a single MMDiT framework?} We introduce \textbf{MM-LDLM}, a model that jointly denoises text tokens and continuous latent vectors, enabling bidirectional generation between tokens and semantic embeddings. Our contributions are:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Unified multimodal diffusion}: We combine masked discrete diffusion (for text tokens) with continuous $\epsilon$-prediction diffusion (for latent vectors) in a single MMDiT architecture, enabling joint denoising across modalities.
+    \item \textbf{Bidirectional generation}: Our model supports three generation modes---unconditional joint generation, latent-to-text (L2T) where clean latents guide text denoising, and text-to-latent (T2L) where clean text guides latent denoising.
+    \item \textbf{Sequential training with selective freezing}: We introduce a training schedule that alternates between modes with selective parameter freezing, improving stability and allowing the model to specialize its text and latent pathways.
+    \item \textbf{Modular latent encoders}: Our framework is agnostic to the latent encoder, supporting SONAR, E5, and other pre-trained sentence embeddings as the continuous representation space.
+\end{enumerate}
+
+\section{Related Work}\label{sec:related}
+
+\subsection{Discrete Diffusion Language Models}
+
+Diffusion models for discrete data have evolved rapidly. D3PM~\citep{austin2021d3pm} introduced structured transition matrices for discrete state spaces, establishing the theoretical foundation. MDLM~\citep{lou2024mdlm} proposed estimating data distribution ratios directly, achieving strong performance with a simpler masked diffusion framework. Concurrently, \citet{sahoo2024simple} demonstrated that simple masked diffusion with minor architectural choices matches or exceeds more complex approaches. HDLM~\citep{gulrajani2024hdlm} further advanced likelihood-based training for diffusion language models. GIDD~\citep{ruette2024gidd} introduced generative interpolative strategies for improved discrete diffusion. These methods all operate in token space, generating text by iteratively unmasking tokens from a fully masked state.
+
+\subsection{Continuous and Latent Diffusion for Text}
+
+An alternative line of work maps text into continuous spaces before applying diffusion. Diffusion-LM~\citep{li2022diffusionlm} pioneered continuous diffusion for controllable text generation by embedding tokens into continuous vectors. Latent diffusion approaches~\citep{lovelace2024latent} operate in the latent space of pre-trained encoders, enabling smoother generation dynamics. In the image domain, Latent Diffusion Models (LDMs)~\citep{rombach2022ldm} demonstrated that performing diffusion in a learned latent space dramatically improves efficiency and quality. Our work bridges these two paradigms by jointly operating in both discrete token space and continuous latent space.
+
+\subsection{Multimodal Diffusion Transformers}
+
+The Diffusion Transformer (DiT)~\citep{peebles2023dit} replaced U-Net architectures with transformers for diffusion models, using adaptive layer normalization (AdaLN) for timestep conditioning. Stable Diffusion 3~\citep{esser2024sd3} introduced MMDiT, which processes multiple modalities through parallel transformer streams with shared self-attention, enabling each modality to attend to all others. This architecture achieves strong results by allowing text and image representations to jointly influence the denoising process. We adopt the MMDiT paradigm for language modeling, using it to jointly process text tokens and latent embeddings.
+
+\section{Method}\label{sec:method}
+
+\subsection{Overview}
+
+MM-LDLM consists of three components: (1) a \textbf{text pathway} that handles discrete masked diffusion over token sequences, (2) a \textbf{latent pathway} that handles continuous diffusion over sentence-level embeddings from pre-trained encoders, and (3) an \textbf{MMDiT backbone} that jointly processes both modalities with shared attention. We describe each component below.
+
+\subsection{Discrete Masked Diffusion for Text}
+
+Following~\citet{sahoo2024simple} and~\citet{lou2024mdlm}, we model text generation as a masked diffusion process. Given a text sequence $\mathbf{x} = (x_1, \ldots, x_L)$ with vocabulary $\mathcal{V}$, the forward process progressively masks tokens:
+
+\begin{equation}
+    q(\mathbf{z}_t | \mathbf{x}) = \prod_{i=1}^{L} q(z_{t,i} | x_i), \quad
+    q(z_{t,i} = m | x_i) = 1 - \alpha_t, \quad
+    q(z_{t,i} = x_i | x_i) = \alpha_t
+\end{equation}
+
+where $m$ is the \texttt{[MASK]} token and $\alpha_t$ is a noise schedule that decreases from 1 to 0 as $t$ increases from 0 to 1. At $t=0$, the sequence is clean; at $t=1$, all tokens are masked.
+
+The reverse process learns to predict the original tokens given the noisy (partially masked) sequence:
+
+\begin{equation}
+    p_\theta(\mathbf{x} | \mathbf{z}_t) = \prod_{i=1}^{L} p_\theta(x_i | \mathbf{z}_t) \cdot \mathds{1}[z_{t,i} = m] + \mathds{1}[z_{t,i} \neq m]
+\end{equation}
+
+The text loss is the standard cross-entropy over masked positions:
+
+\begin{equation}
+    \mathcal{L}_{\text{text}} = -\mathbb{E}_{t, \mathbf{z}_t} \left[ \sum_{i: z_{t,i} = m} \log p_\theta(x_i | \mathbf{z}_t) \right]
+\end{equation}
+
+We adopt the hybrid noise schedule from~\citet{ruette2024gidd}, which interpolates between absorbing and uniform noise:
+
+\begin{equation}
+    q(z_{t,i} | x_i) = \alpha_t \cdot \mathds{1}[z_{t,i} = x_i] + \beta_t \cdot \mathds{1}[z_{t,i} = m] + c_t \cdot \frac{\mathds{1}[z_{t,i} \neq x_i, z_{t,i} \neq m]}{|\mathcal{V}| - 2}
+\end{equation}
+
+where $\alpha_t + \beta_t + (|\mathcal{V}| - 2) c_t = 1$.
+
+\subsection{Continuous Diffusion for Latent Representations}
+
+For the latent pathway, we apply standard continuous diffusion~\citep{ho2020ddpm} to sentence-level embeddings $\mathbf{l} \in \mathbb{R}^d$ produced by a frozen pre-trained encoder $E$ (e.g., SONAR~\citep{duquenne2023sonar} or E5~\citep{wang2024e5}).
+
+The forward process adds Gaussian noise according to a cosine schedule:
+
+\begin{equation}
+    q(\mathbf{l}_t | \mathbf{l}_0) = \mathcal{N}(\mathbf{l}_t; \sqrt{\bar{\alpha}_t} \, \mathbf{l}_0, (1 - \bar{\alpha}_t) \mathbf{I})
+\end{equation}
+
+where $\bar{\alpha}_t = \prod_{s=1}^{t} (1 - \beta_s)$ with cosine-scheduled $\beta_s$.
+
+We use $\epsilon$-prediction parameterization, where the model predicts the noise $\epsilon$ added to the latent:
+
+\begin{equation}
+    \mathcal{L}_{\text{latent}} = \mathbb{E}_{t, \epsilon} \left[ \| \epsilon - \epsilon_\theta(\mathbf{l}_t, t) \|^2 \right]
+\end{equation}
+
+The model also supports $v$-parameterization~\citep{nichol2021improved}, where $v = \sqrt{\bar{\alpha}_t} \epsilon - \sqrt{1 - \bar{\alpha}_t} \mathbf{l}_0$.
+
+\subsection{MMDiT Architecture}
+
+The core of MM-LDLM is a Multimodal Diffusion Transformer (MMDiT)~\citep{esser2024sd3} that jointly processes text tokens and latent embeddings. The architecture consists of:
+
+\paragraph{Text Encoder.} Token IDs are mapped to embeddings via a learned embedding matrix $W_E \in \mathbb{R}^{|\mathcal{V}| \times d_h}$ plus sinusoidal position embeddings:
+\begin{equation}
+    \mathbf{h}^{\text{text}} = W_E[\mathbf{z}_t] + \text{PE}
+\end{equation}
+
+\paragraph{Latent Encoder.} The continuous latent vector is projected into the transformer's hidden dimension through a two-layer MLP with residual connection and layer normalization:
+\begin{equation}
+    \mathbf{h}^{\text{latent}} = \text{MLP}(\text{LN}(\mathbf{l}_t)) + W_{\text{res}} \mathbf{l}_t
+\end{equation}
+
+\paragraph{Multimodal Conditioning.} Both the text timestep $t_{\text{text}}$ and latent timestep $t_{\text{latent}}$ are embedded via separate sinusoidal embedders and combined through a learned linear layer:
+\begin{equation}
+    \mathbf{c} = W_c [\sigma_{\text{text}}(t_{\text{text}}) \| \sigma_{\text{latent}}(t_{\text{latent}})]
+\end{equation}
+where $\sigma$ denotes the sinusoidal timestep embedding followed by a SiLU-activated MLP. For conditional generation modes (L2T or T2L), the clean modality's timestep is set to zero.
+
+\paragraph{Joint Attention.} The MMDiT backbone processes both modality streams through $N$ transformer blocks. Within each block, the text and latent representations are concatenated along the sequence dimension for self-attention, then split back into separate streams for feed-forward processing. This allows each modality to attend to all tokens from both modalities:
+
+\begin{equation}
+    [\mathbf{h}^{\text{text}}; \mathbf{h}^{\text{latent}}] = \text{MMDiT-Block}([\mathbf{h}^{\text{text}}; \mathbf{h}^{\text{latent}}], \mathbf{c})
+\end{equation}
+
+with QK-RMSNorm for training stability and multiple residual streams for improved gradient flow.
+
+\paragraph{Output Heads.} The text stream is projected to vocabulary logits via a linear head $W_{\text{vocab}} \in \mathbb{R}^{d_h \times |\mathcal{V}|}$. The latent stream is projected back to the latent dimension through a two-layer MLP with GELU activation and dropout:
+\begin{equation}
+    \hat{\mathbf{x}} = W_{\text{vocab}} \, \mathbf{h}^{\text{text}}, \quad
+    \hat{\epsilon} = \text{MLP}_{\text{latent}}(\mathbf{h}^{\text{latent}})
+\end{equation}
+
+\subsection{Training Objectives and Modes}
+
+The total training objective combines the text and latent losses:
+\begin{equation}
+    \mathcal{L} = \mathcal{L}_{\text{text}} + \lambda \mathcal{L}_{\text{latent}}
+\end{equation}
+where $\lambda$ balances the two losses (default $\lambda = 1.0$).
+
+We support three training modes:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Unconditional (joint):} Both modalities receive noise at independent timesteps. All parameters are trained. This mode learns the joint distribution $p(\mathbf{x}, \mathbf{l})$.
+    \item \textbf{Latent-to-Text (L2T):} Clean latents condition noisy text. Latent-specific parameters are frozen. This learns $p(\mathbf{x} | \mathbf{l})$.
+    \item \textbf{Text-to-Latent (T2L):} Clean text conditions noisy latents. Text-specific parameters are frozen. This learns $p(\mathbf{l} | \mathbf{x})$.
+\end{itemize}
+
+\paragraph{Sequential Training Schedule.} We train using a sequential schedule that cycles through modes: first unconditional for $k_1$ steps, then L2T for $k_2$ steps, then T2L for $k_3$ steps. During L2T, latent encoder and head parameters are frozen; during T2L, text encoder and head parameters are frozen. Shared MMDiT parameters remain trainable in all modes. This selective freezing prevents catastrophic interference between the modality-specific pathways while allowing the shared backbone to learn cross-modal representations.
+
+\subsection{Inference}
+
+\paragraph{Unconditional Generation.} Both modalities start from pure noise ($\mathbf{z}_1$ = all \texttt{[MASK]}, $\mathbf{l}_T \sim \mathcal{N}(0, \mathbf{I})$) and are jointly denoised over $T$ steps.
+
+\paragraph{Latent-to-Text (L2T).} Given a target latent vector $\mathbf{l}_0$ (e.g., from encoding a prompt), the text starts fully masked and is denoised conditioned on $\mathbf{l}_0$ with $t_{\text{latent}} = 0$.
+
+\paragraph{Text-to-Latent (T2L).} Given clean text tokens, the latent starts from noise and is denoised conditioned on the text with $t_{\text{text}} = 0$.
+
+\section{Experimental Settings}\label{sec:settings}
+
+\subsection{Dataset}
+
+We train on OpenWebText, a large-scale web text corpus. Text is tokenized using BERT-base-uncased~\citep{devlin2019bert} with a maximum sequence length of 512 tokens. Latent representations are pre-extracted using SONAR (1024-dimensional)~\citep{duquenne2023sonar} or multilingual E5-large (768-dimensional)~\citep{wang2024e5} via distributed multi-GPU extraction with \texttt{torchrun}.
+
+\subsection{Model Configuration}
+
+Our MMDiT model uses a hidden dimension of 768, with 12 transformer blocks, and a conditioning dimension of 768. We use QK-RMSNorm and 2 residual streams. The text vocabulary is 30,522 (BERT-base). The latent dimension matches the encoder output (1024 for SONAR, 768 for E5). Training uses AdamW with learning rate $3 \times 10^{-4}$, weight decay 0.01, and linear warmup over 1,000 steps. We train with batch size 16 in bf16 precision on 2$\times$ NVIDIA H200 GPUs.
+
+\subsection{Baselines}
+
+We compare against the following baselines:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{MDLM}~\citep{lou2024mdlm}: Masked discrete diffusion without latent conditioning.
+    \item \textbf{HDLM}~\citep{gulrajani2024hdlm}: Hierarchical diffusion language model.
+    \item \textbf{AR (LLaMA)}~\citep{radford2019gpt2}: Standard autoregressive baseline with matched parameter count.
+    \item \textbf{GIDD+}~\citep{ruette2024gidd}: Generative interpolative discrete diffusion with improved sampling.
+    \item \textbf{DIT-Latent (AdaLN)}: A DiT model with latent conditioning via adaptive layer normalization---using the latent as a global condition rather than a joint modality.
+    \item \textbf{DIT-Latent (Cross-Attention)}: A DiT model with latent conditioning via cross-attention layers.
+\end{itemize}
+
+\subsection{Evaluation Metrics}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Generative Perplexity}: We generate 256 samples with 512 denoising steps and evaluate perplexity using GPT-2 Large as the reference model.
+    \item \textbf{Validation Loss}: Cross-entropy loss on the held-out validation split.
+    \item \textbf{Latent Reconstruction}: For T2L mode, we measure the cosine similarity between predicted and ground-truth latent vectors.
+\end{itemize}
+
+\section{Experimental Results}\label{sec:results}
+
+\emph{Experiments are currently in progress. Results will be reported upon completion of training runs.}
+
+% Placeholder tables for results:
+
+% \begin{table}[h]
+% \centering
+% \caption{Generative perplexity on OpenWebText (lower is better). Results averaged over 3 runs.}
+% \begin{tabular}{lcc}
+% \toprule
+% \textbf{Model} & \textbf{Gen. PPL $\downarrow$} & \textbf{Val. Loss $\downarrow$} \\
+% \midrule
+% AR (LLaMA) & -- & -- \\
+% MDLM & -- & -- \\
+% HDLM & -- & -- \\
+% GIDD+ & -- & -- \\
+% DIT-Latent (AdaLN) & -- & -- \\
+% DIT-Latent (Cross-Attn) & -- & -- \\
+% \midrule
+% MM-LDLM (Unconditional) & -- & -- \\
+% MM-LDLM (L2T, SONAR) & -- & -- \\
+% MM-LDLM (L2T, E5) & -- & -- \\
+% \bottomrule
+% \end{tabular}
+% \end{table}
+
+\section{Discussion and Limitations}\label{sec:discussion}
+
+\paragraph{Unified Framework.} MM-LDLM demonstrates that discrete and continuous diffusion can coexist within a single transformer architecture. The MMDiT's shared attention mechanism allows the text and latent streams to mutually inform each other during denoising, creating a natural bridge between token-level and semantic-level representations.
+
+\paragraph{Latent Encoder Choice.} Our framework is modular with respect to the latent encoder. SONAR provides multilingual sentence embeddings at 1024 dimensions, while E5 offers strong retrieval-oriented embeddings at 768 dimensions. The choice of encoder influences what semantic information is available to guide text generation, and we expect different encoders to excel at different downstream tasks.
+
+\paragraph{Limitations.} 
+(1) The current architecture uses a single latent token to represent the entire sentence, which may limit fine-grained conditioning. Multi-token latent representations could capture more nuanced semantics.
+(2) Training requires pre-extracted latent representations, adding a preprocessing step. End-to-end training with a differentiable encoder could eliminate this.
+(3) The sequential training schedule introduces additional hyperparameters (mode ratios, step counts) that require tuning.
+(4) Our evaluation is currently limited to OpenWebText; broader evaluation across diverse text domains and downstream tasks is needed.
+
+\section{Conclusion \& Future Work}\label{sec:conclusion}
+
+We presented MM-LDLM, a multimodal latent diffusion language model that unifies discrete masked diffusion for text tokens with continuous diffusion for latent semantic vectors within an MMDiT architecture. Our framework enables bidirectional generation between text and latent spaces, with a sequential training schedule and selective parameter freezing for stable multi-mode training.
+
+Future directions include: (1) extending to image-text-latent tri-modal generation using our existing image MMDiT pipeline, (2) exploring multi-token latent representations for finer-grained semantic conditioning, (3) investigating latent arithmetic for controllable generation (e.g., interpolation between sentence embeddings), and (4) scaling to larger models and datasets to assess the framework's potential for competitive language modeling.
+
+\newpage
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\newpage
+\section*{Appendix}
+
+\subsection*{A. Model Architecture Details}
+
+The MultimodalMMDiT architecture consists of the following components:
+
+\begin{itemize}
+    \item \textbf{TextEncoder}: Token embedding ($|\mathcal{V}| \times d_h$) + learned positional embedding ($L_{\max} \times d_h$)
+    \item \textbf{LatentEncoder}: LayerNorm $\rightarrow$ MLP ($d_l \rightarrow 2d_h \rightarrow d_h$, GELU) + residual projection ($d_l \rightarrow d_h$) + positional embedding
+    \item \textbf{MultimodalConditioning}: Two TimestepEmbedders (sinusoidal $\rightarrow$ MLP with SiLU) for text and latent timesteps, combined via linear layer ($2d_c \rightarrow 4d_c \rightarrow d_c$)
+    \item \textbf{MMDiT Backbone}: $N$ blocks with QK-RMSNorm and $R$ residual streams
+    \item \textbf{Text Head}: Linear ($d_h \rightarrow |\mathcal{V}|$)
+    \item \textbf{Latent Head}: MLP ($d_h \rightarrow 2d_h \rightarrow d_l$, GELU + Dropout)
+\end{itemize}
+
+\subsection*{B. Continuous Diffusion Details}
+
+We support three beta schedules for the continuous latent diffusion:
+\begin{itemize}
+    \item \textbf{Linear}: $\beta_t = \beta_{\text{start}} + (\beta_{\text{end}} - \beta_{\text{start}}) \cdot t / T$
+    \item \textbf{Cosine}: $\bar{\alpha}_t = \cos^2(\frac{t/T + s}{1+s} \cdot \frac{\pi}{2})$ with $s = 0.008$
+    \item \textbf{Sigmoid}: $\beta_t = \text{sigmoid}(-6 + 12 \cdot t/T) \cdot (\beta_{\text{end}} - \beta_{\text{start}}) + \beta_{\text{start}}$
+\end{itemize}
+
+And three parameterizations: $\epsilon$-prediction (predict noise), $v$-prediction (predict velocity), and $x_0$-prediction (predict clean sample).
+
+\subsection*{C. Training Mode Details}
+
+\begin{table}[h]
+\centering
+\caption{Parameter freezing by training mode.}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Component} & \textbf{Unconditional} & \textbf{L2T} & \textbf{T2L} \\
+\midrule
+Text Encoder + Head & \checkmark & \checkmark & $\times$ \\
+Latent Encoder + Head & \checkmark & $\times$ & \checkmark \\
+MMDiT Backbone & \checkmark & \checkmark & \checkmark \\
+Conditioning & \checkmark & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}

@@ -1,0 +1,48 @@
+This is BibTeX, Version 0.99d (TeX Live 2025)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: neurips_2025.aux
+The style file: plainnat.bst
+Database file #1: references.bib
+Warning--empty journal in radford2019gpt2
+You've used 16 entries,
+            2773 wiz_defined-function locations,
+            665 strings with 7825 characters,
+and the built_in function-call counts, 8744 in all, are:
+= -- 719
+> -- 695
+< -- 10
++ -- 232
+- -- 216
+* -- 726
+:= -- 1364
+add.period$ -- 48
+call.type$ -- 16
+change.case$ -- 119
+chr.to.int$ -- 16
+cite$ -- 33
+duplicate$ -- 373
+empty$ -- 597
+format.name$ -- 240
+if$ -- 1810
+int.to.chr$ -- 1
+int.to.str$ -- 1
+missing$ -- 16
+newline$ -- 88
+num.names$ -- 64
+pop$ -- 252
+preamble$ -- 1
+purify$ -- 103
+quote$ -- 0
+skip$ -- 331
+stack$ -- 0
+substring$ -- 168
+swap$ -- 60
+text.length$ -- 6
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 176
+warning$ -- 1
+while$ -- 57
+width$ -- 0
+write$ -- 205
+(There was 1 warning)

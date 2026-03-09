@@ -1,0 +1,164 @@
+\begin{thebibliography}{31}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[anonymous(2025{\natexlab{a}})]{dinfer2025}
+anonymous.
+\newblock d{I}nfer: Efficient inference for diffusion language models.
+\newblock \emph{arXiv preprint arXiv:2510.08666}, 2025{\natexlab{a}}.
+
+\bibitem[anonymous(2025{\natexlab{b}})]{editext2025}
+anonymous.
+\newblock {EdiText}: Controllable text editing with discrete diffusion models.
+\newblock In \emph{Annual Meeting of the Association for Computational Linguistics (ACL)}, 2025{\natexlab{b}}.
+
+\bibitem[anonymous(2025{\natexlab{c}})]{lddm2025}
+anonymous.
+\newblock Latent discrete diffusion models.
+\newblock \emph{arXiv preprint arXiv:2510.18114}, 2025{\natexlab{c}}.
+
+\bibitem[Arriola et~al.(2025{\natexlab{a}})Arriola, Gokaslan, and Kuleshov]{arriola2025remdm}
+Marianne Arriola, Aaron Gokaslan, and Volodymyr Kuleshov.
+\newblock Scaling up test-time compute with latent reasoning: A recurrent depth approach.
+\newblock \emph{arXiv preprint arXiv:2503.00307}, 2025{\natexlab{a}}.
+
+\bibitem[Arriola et~al.(2025{\natexlab{b}})Arriola, Gokaslan, Marroquin, and Kuleshov]{arriola2025bd3lm}
+Marianne Arriola, Aaron Gokaslan, Edgar Marroquin, and Volodymyr Kuleshov.
+\newblock Block diffusion: Interpolating between autoregressive and diffusion language models.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2025{\natexlab{b}}.
+
+\bibitem[Ashok et~al.(2024)]{congenbench2024}
+Dhananjay Ashok et~al.
+\newblock {ConGenBench}: A fine-grained benchmark for controllable text generation.
+\newblock \emph{arXiv preprint arXiv:2405.01490}, 2024.
+
+\bibitem[Bansal et~al.(2024)Bansal, Chu, Schwarzschild, Sengupta, Goldblum, Geiping, and Goldstein]{bansal2024}
+Arpit Bansal, Hong-Min Chu, Avi Schwarzschild, Soumyadip Sengupta, Micah Goldblum, Jonas Geiping, and Tom Goldstein.
+\newblock Universal guidance for diffusion models.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2024.
+
+\bibitem[Black et~al.(2024)Black, Janner, Du, Kostrikov, and Levine]{black2024}
+Kevin Black, Michael Janner, Yilun Du, Ilya Kostrikov, and Sergey Levine.
+\newblock Training diffusion models with reinforcement learning.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2024.
+
+\bibitem[Dhariwal and Nichol(2021)]{dhariwal2021}
+Prajit Dhariwal and Alexander Nichol.
+\newblock Diffusion models beat {GAN}s on image synthesis.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2021.
+
+\bibitem[Esser et~al.(2024)Esser, Kulal, Blattmann, Entezari, M{\"u}ller, Saini, Levi, Lorber, Sauer, Boesel, et~al.]{esser2024}
+Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas M{\"u}ller, Harry Saini, Yam Levi, Dominik Lorber, Axel Sauer, Frederic Boesel, et~al.
+\newblock Scaling rectified flow transformers for high-resolution image synthesis.
+\newblock In \emph{International Conference on Machine Learning (ICML)}, 2024.
+
+\bibitem[Fang et~al.(2024)]{fang2024editeval}
+Jane Fang et~al.
+\newblock {EditEval}: An instruction-based benchmark for text improvements.
+\newblock In \emph{Conference on Computational Natural Language Learning (CoNLL)}, 2024.
+
+\bibitem[Ho and Salimans(2022)]{ho2022}
+Jonathan Ho and Tim Salimans.
+\newblock Classifier-free diffusion guidance.
+\newblock In \emph{NeurIPS Workshop on Deep Generative Models and Downstream Applications}, 2022.
+
+\bibitem[Li et~al.(2022)Li, Thickstun, Gulrajani, Liang, and Hashimoto]{li2022}
+Xiang~Lisa Li, John Thickstun, Ishaan Gulrajani, Percy Liang, and Tatsunori Hashimoto.
+\newblock Diffusion-{LM} improves controllable text generation.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2022.
+
+\bibitem[Liu et~al.(2023)Liu, Feng, Gao, Yang, Liang, Bai, Yan, Shang, Jiang, and Liu]{liu2023latentops}
+Guangyi Liu, Zeyu Feng, Yuan Gao, Zichao Yang, Xiaodan Liang, Junwei Bai, Rui Yan, Lifeng Shang, Xin Jiang, and Qun Liu.
+\newblock Composable text controls in latent space with {ODE}s.
+\newblock In \emph{Annual Meeting of the Association for Computational Linguistics (ACL)}, 2023.
+
+\bibitem[Liu et~al.(2025)]{liu2025dream}
+Jiacheng Liu et~al.
+\newblock Dream 7b: A diffusion reasoning model.
+\newblock \emph{arXiv preprint arXiv:2508.15487}, 2025.
+
+\bibitem[Lou et~al.(2024)Lou, Meng, and Ermon]{lou2024}
+Aaron Lou, Chenlin Meng, and Stefano Ermon.
+\newblock Discrete diffusion modeling by estimating the ratios of the data distribution.
+\newblock In \emph{International Conference on Machine Learning (ICML)}, 2024.
+
+\bibitem[Lovelace et~al.(2023)Lovelace, Kibbe, and Mortazavi]{lovelace2023}
+Justin Lovelace, Warren~A Kibbe, and Bobak~J Mortazavi.
+\newblock Latent diffusion for language generation.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2023.
+
+\bibitem[Lovelace et~al.(2025)Lovelace, Kibbe, and Mortazavi]{lovelace2025starlm}
+Justin Lovelace, Warren~A Kibbe, and Bobak~J Mortazavi.
+\newblock {STAR-LDM}: Stop-think-autoregress with latent diffusion planning.
+\newblock In \emph{Conference on Language Modeling (COLM)}, 2025.
+
+\bibitem[Ma et~al.(2025)]{ladir2025}
+Kaiyuan Ma et~al.
+\newblock {LaDiR}: Latent diffusion enhances {LLM}s for text reasoning.
+\newblock \emph{arXiv preprint arXiv:2510.04573}, 2025.
+
+\bibitem[Meng et~al.(2022)Meng, He, Song, Song, Wu, Zhu, and Ermon]{meng2022}
+Chenlin Meng, Yutong He, Yang Song, Jiaming Song, Jiajun Wu, Jun-Yan Zhu, and Stefano Ermon.
+\newblock {SDEdit}: Guided image synthesis and editing with stochastic differential equations.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2022.
+
+\bibitem[Nie et~al.(2025)]{nie2025llada}
+Shen Nie et~al.
+\newblock Large language diffusion models.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2025.
+\newblock Oral.
+
+\bibitem[Nisonoff et~al.(2025)Nisonoff, Xiong, Allenspach, and Listgarten]{nisonoff2025}
+Hunter Nisonoff, Junhao Xiong, Stephan Allenspach, and Jennifer Listgarten.
+\newblock Simple guidance mechanisms for discrete diffusion models.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2025.
+
+\bibitem[Reid et~al.(2023)Reid, Hellendoorn, and Neubig]{reid2023}
+Machel Reid, Vincent~J Hellendoorn, and Graham Neubig.
+\newblock Diffus{ER}: Diffusion via edit-based reconstruction.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2023.
+
+\bibitem[Sahoo and Kuleshov(2025)]{sahoo2025duo}
+Subham~Sekhar Sahoo and Volodymyr Kuleshov.
+\newblock The diffusion duality.
+\newblock \emph{arXiv preprint arXiv:2506.10892}, 2025.
+
+\bibitem[Sahoo et~al.(2024)Sahoo, Arriola, Schiff, Gokaslan, Marroquin, Chiu, Rush, and Kuleshov]{sahoo2024}
+Subham~Sekhar Sahoo, Marianne Arriola, Yair Schiff, Aaron Gokaslan, Edgar Marroquin, Justin~T Chiu, Alexander Rush, and Volodymyr Kuleshov.
+\newblock Simple and effective masked diffusion language models.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2024.
+
+\bibitem[Wang et~al.(2025)Wang, Gruver, Karaletsos, and Wilson]{wang2025}
+Chenyu Wang, Nate Gruver, Theofanis Karaletsos, and Andrew~Gordon Wilson.
+\newblock Fine-tuning discrete diffusion models via reward optimization with applications to {DNA} and protein design.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2025.
+
+\bibitem[Xu et~al.(2025{\natexlab{a}})Xu, Gao, Lan, and Tang]{xu2025tabdiff}
+Hengrui Xu, Junteng Gao, Zhenyu Lan, and Zilong Tang.
+\newblock Mixed-type tabular data synthesis with score-based diffusion in latent space.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2025{\natexlab{a}}.
+
+\bibitem[Xu et~al.(2025{\natexlab{b}})]{xu2025edlm}
+Minkai Xu et~al.
+\newblock Energy-based diffusion language models for text generation.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2025{\natexlab{b}}.
+
+\bibitem[Zhang et~al.(2023)Zhang, Wang, Liang, Peng, Zettlemoyer, and Yih]{zhang2023}
+Yizhe Zhang, Jiatao Wang, Zhuofeng Liang, Nanyun Peng, Luke Zettlemoyer, and Wen-tau Yih.
+\newblock {PLANNER}: Generating diversified paragraph via latent language diffusion model.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2023.
+
+\bibitem[Zhou et~al.(2025{\natexlab{a}})Zhou, Yang, Hu, Wang, Zhang, Zhang, Mackey, Jaakkola, Bates, and Zhang]{zhou2025ccdd}
+Cai Zhou, Chenxiao Yang, Yi~Hu, Chenyu Wang, Chubin Zhang, Muhan Zhang, Lester Mackey, Tommi Jaakkola, Stephen Bates, and Dinghuai Zhang.
+\newblock Coevolutionary continuous discrete diffusion: Make your diffusion language model a latent reasoner.
+\newblock \emph{arXiv preprint arXiv:2510.03206}, 2025{\natexlab{a}}.
+
+\bibitem[Zhou et~al.(2025{\natexlab{b}})Zhou, Yu, Babu, Tirumala, Yasunaga, Shamber, Katz, Lian, Passos, Zettlemoyer, et~al.]{zhou2025transfusion}
+Chunting Zhou, Lili Yu, Arun Babu, Kushal Tirumala, Michihiro Yasunaga, Leonid Shamber, Jacob Katz, Bill Lian, Alexandre Passos, Luke Zettlemoyer, et~al.
+\newblock Transfusion: Predict the next token and diffuse images with one multi-modal model.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2025{\natexlab{b}}.
+
+\end{thebibliography}

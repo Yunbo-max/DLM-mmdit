@@ -23,6 +23,7 @@ from latentDLM_mmdit.models.multimodal_mmdit import MultimodalMMDiT
 from latentDLM_mmdit.modeling_mmdit import get_tokenizer
 from latentDLM_mmdit.diffusion_process import MaskedDiffusion, sample_t
 from latentDLM_mmdit.continuous_diffusion import ContinuousDiffusion
+from latentDLM_mmdit.utils import sample_categorical
 
 
 class ReverseDiffusionSampler:
@@ -79,7 +80,7 @@ class ReverseDiffusionSampler:
         if "model_state_dict" in checkpoint:
             state_dict = checkpoint["model_state_dict"]
 
-            # Separate model weights from trainer weights
+            # Strip prefix (model., module., etc.) and separate trainer weights
             model_state_dict = {}
             trainer_state_dict = {}
 
@@ -113,79 +114,64 @@ class ReverseDiffusionSampler:
                 ]
                 print("✓ Loaded text_noise_schedule from checkpoint")
 
-            # Remap latent_encoder keys to match current architecture
-            remapped_state_dict = {}
+            # Save weight keys comparison to file for verification
+            keys_file = os.path.join(os.path.dirname(checkpoint_path), "weight_keys_comparison.txt")
+            with open(keys_file, "w") as kf:
+                kf.write("CHECKPOINT STATE_DICT KEYS (after prefix stripping):\n")
+                kf.write("=" * 100 + "\n")
+                for k, v in sorted(model_state_dict.items()):
+                    kf.write(f"  {k:60s} {str(v.shape):>20s} {v.dtype}\n")
+                kf.write(f"\nTotal checkpoint keys: {len(model_state_dict)}\n")
+                kf.write("\n\nMODEL EXPECTED KEYS:\n")
+                kf.write("=" * 100 + "\n")
+                for k, v in sorted(self.model.state_dict().items()):
+                    kf.write(f"  {k:60s} {str(v.shape):>20s} {v.dtype}\n")
+                kf.write(f"\nTotal model keys: {len(self.model.state_dict())}\n")
 
-            for k, v in model_state_dict.items():
-                if k.startswith("latent_encoder.projection."):
-                    parts = k.split(".")
-                    if len(parts) >= 4:
-                        idx = int(parts[2])
-                        param_type = parts[3]
+                # Show mismatches
+                ckpt_keys = set(model_state_dict.keys())
+                model_keys = set(self.model.state_dict().keys())
+                missing_in_ckpt = model_keys - ckpt_keys
+                unexpected_in_ckpt = ckpt_keys - model_keys
+                kf.write("\n\nMISSING IN CHECKPOINT (model needs but checkpoint doesn't have):\n")
+                kf.write("=" * 100 + "\n")
+                for k in sorted(missing_in_ckpt):
+                    kf.write(f"  {k}\n")
+                kf.write(f"\nTotal missing: {len(missing_in_ckpt)}\n")
+                kf.write("\n\nUNEXPECTED IN CHECKPOINT (checkpoint has but model doesn't need):\n")
+                kf.write("=" * 100 + "\n")
+                for k in sorted(unexpected_in_ckpt):
+                    kf.write(f"  {k}\n")
+                kf.write(f"\nTotal unexpected: {len(unexpected_in_ckpt)}\n")
 
-                        # Map based on index
-                        if idx == 0:  # First Linear (32 -> 2048)
-                            new_k = f"latent_encoder.adapter.0.{param_type}"
-                            remapped_state_dict[new_k] = v
-                            print(f"Mapping {k} -> {new_k} [{v.shape}]")
+                # Check shape mismatches
+                kf.write("\n\nSHAPE MISMATCHES:\n")
+                kf.write("=" * 100 + "\n")
+                shape_mismatches = 0
+                for k in sorted(ckpt_keys & model_keys):
+                    ckpt_shape = model_state_dict[k].shape
+                    model_shape = self.model.state_dict()[k].shape
+                    if ckpt_shape != model_shape:
+                        kf.write(f"  {k:60s} ckpt={str(ckpt_shape):>20s} model={str(model_shape):>20s}\n")
+                        shape_mismatches += 1
+                if shape_mismatches == 0:
+                    kf.write("  (none)\n")
+                kf.write(f"\nTotal shape mismatches: {shape_mismatches}\n")
 
-                        elif idx == 1:  # Skip GELU parameters
-                            print(f"Skipping {k} (GELU parameters)")
-                            continue
+            print(f"Saved weight keys comparison to: {keys_file}")
 
-                        elif idx == 3:  # Second Linear (2048 -> 1024)
-                            # Map to adapter.2
-                            new_k = f"latent_encoder.adapter.2.{param_type}"
-                            remapped_state_dict[new_k] = v
-                            print(f"Mapping {k} -> {new_k} [{v.shape}]")
-                else:
-                    remapped_state_dict[k] = v
-
-            # Initialize missing layers
-            with torch.no_grad():
-                # Initialize LayerNorm
-                if hasattr(self.model, "latent_encoder") and hasattr(
-                    self.model.latent_encoder, "norm"
-                ):
-                    if "latent_encoder.norm.weight" not in remapped_state_dict:
-                        remapped_state_dict["latent_encoder.norm.weight"] = (
-                            torch.ones_like(self.model.latent_encoder.norm.weight)
-                        )
-                        remapped_state_dict["latent_encoder.norm.bias"] = (
-                            torch.zeros_like(self.model.latent_encoder.norm.bias)
-                        )
-                        print("✓ Initialized missing LayerNorm")
-
-                # Initialize residual_proj from scratch
-                if hasattr(self.model, "latent_encoder") and hasattr(
-                    self.model.latent_encoder, "residual_proj"
-                ):
-                    if "latent_encoder.residual_proj.weight" not in remapped_state_dict:
-                        remapped_state_dict["latent_encoder.residual_proj.weight"] = (
-                            torch.randn_like(
-                                self.model.latent_encoder.residual_proj.weight
-                            )
-                            * 0.02
-                        )
-                        remapped_state_dict["latent_encoder.residual_proj.bias"] = (
-                            torch.zeros_like(
-                                self.model.latent_encoder.residual_proj.bias
-                            )
-                        )
-                        print("✓ Initialized missing residual_proj with random weights")
-
-            # Load model weights
+            # Load model weights directly (LatentEncoder now matches checkpoint)
             missing, unexpected = self.model.load_state_dict(
-                remapped_state_dict, strict=False
+                model_state_dict, strict=False
             )
             print(
                 f"\nModel loaded. Missing: {len(missing)}, Unexpected: {len(unexpected)}"
             )
 
             if len(missing) > 0:
-                print(f"First 5 missing keys: {missing[:5]}")
+                print(f"Missing keys: {missing}")
             if len(unexpected) > 0:
-                print(f"First 5 unexpected keys: {unexpected[:5]}")
+                print(f"Unexpected keys: {unexpected}")
         self.model.eval()
 
         # Create continuous diffusion for latents
@@ -198,44 +184,72 @@ class ReverseDiffusionSampler:
 
         print(f"✓ Sampler initialized")
 
+    def _get_sigmas(self, t, eps=1e-4):
+        """Compute dsigma and sigma for the MDLM noise schedule."""
+        dsigma = (1 - eps) / (1 - (1 - eps) * t.clip(eps, 1))
+        sigma = -torch.log1p(-(1 - eps) * t.clip(eps, 1))
+        return dsigma, sigma
+
     @torch.no_grad()
-    def sample_l2t(self, latents, seq_len=128, steps=1000, temperature=1.0):
+    def sample_l2t(self, latents, seq_len=128, steps=1000, temperature=1.0,
+                   target_tokens=None, target_attention_mask=None):
         """
-        True reverse diffusion sampling for L2T mode.
-        Follows the reverse process from t=1.0 (fully masked) to t=0.0 (clean).
+        Correct MDLM reverse diffusion sampling for L2T mode.
+        Uses conditional transition p(x_{t-1} | x_t, x_0_pred) with copy-flag
+        to ensure monotonic unmasking.
+
+        Args:
+            target_tokens: Optional [batch, seq_len] ground truth token ids
+                           for computing cross-entropy loss (same as training).
+            target_attention_mask: Optional [batch, seq_len] attention mask from
+                           the target text tokenization. 1=real token, 0=padding.
+                           Matches training where padding positions have mask=0.
         """
         batch_size = latents.shape[0]
         device = self.device
+        eps = 1e-4
 
         # Ensure latents are correct shape [batch, latent_dim]
         if latents.dim() == 1:
             latents = latents.unsqueeze(0)
         latents = latents.to(device)
 
-        # Start from fully masked tokens (t=1.0)
-        x = torch.full(
-            (batch_size, seq_len), self.mask_token_id, dtype=torch.long, device=device
-        )
+        if target_tokens is not None:
+            target_tokens = target_tokens.to(device)
 
-        # Attention mask (all tokens valid)
-        attention_mask = torch.ones(
-            (batch_size, seq_len), dtype=torch.bool, device=device
+        # Attention mask: use target's mask if provided (matches training),
+        # otherwise all-ones (all positions are real)
+        if target_attention_mask is not None:
+            attention_mask = target_attention_mask.bool().to(device)
+        else:
+            attention_mask = torch.ones(
+                (batch_size, seq_len), dtype=torch.bool, device=device
+            )
+
+        # Initialize z_t: [MASK] where attention_mask=1, [PAD] where attention_mask=0
+        # This matches training where padding positions stay as PAD tokens
+        z_t = torch.full(
+            (batch_size, seq_len), self.tokenizer.pad_token_id, dtype=torch.long, device=device
         )
+        z_t[attention_mask] = self.mask_token_id
 
         # Latent conditioning (clean, t=0)
         latent_t = torch.zeros(batch_size, device=device)
 
-        # Reverse time steps (from 1.0 to 0.0)
-        eps = 1e-4
-        timesteps = torch.linspace(1.0 - eps, eps, steps, device=device)
+        # Timestep schedule: evenly spaced from t_eps to 1-t_eps, iterated in reverse
+        ts = torch.linspace(eps, 1 - eps, steps + 1, device=device).unsqueeze(-1)
 
-        pbar = tqdm(timesteps, desc="Reverse diffusion")
-        for i, t in enumerate(pbar):
-            t_vec = torch.full((batch_size,), float(t), device=device)
+        pbar = tqdm(range(steps - 1, -1, -1), desc="Reverse diffusion")
+        for i in pbar:
+            t = ts[i]
+            tm1 = ts[max(0, i - 1)]
 
-            # Model predicts p(x₀ | x_t, z)
+            t_vec = t.expand(batch_size)
+            tm1_vec = tm1.expand(batch_size)
+
+            # Model predicts logits for x₀
             text_logits, _ = self.model(
-                text_tokens=x,
+                text_tokens=z_t,
                 latents=latents.unsqueeze(1),
                 text_timesteps=t_vec,
                 latent_timesteps=latent_t,
@@ -246,75 +260,133 @@ class ReverseDiffusionSampler:
             if temperature != 1.0:
                 text_logits = text_logits / temperature
 
-            # Convert to probabilities for x₀
-            probs_x0 = torch.softmax(text_logits, dim=-1)
+            # Compute loss on masked positions (same as training)
+            text_loss = 0.0
+            text_accuracy = 0.0
+            current_mask = (z_t == self.mask_token_id)
+            if current_mask.any():
+                if target_tokens is not None:
+                    # Cross-entropy vs ground truth (same as training)
+                    vocab_size = text_logits.shape[-1]
+                    text_loss_unmasked = F.cross_entropy(
+                        text_logits.view(-1, vocab_size),
+                        target_tokens.view(-1),
+                        ignore_index=-100,
+                        reduction="none",
+                    ).view(batch_size, seq_len)
+                    mask_sum = current_mask.sum().float().clamp(min=1)
+                    text_loss = (text_loss_unmasked * current_mask).sum() / mask_sum
+                    text_loss = text_loss.item()
 
-            # Get transition probabilities for x_{t-Δt}
-            if i < steps - 1:
-                t_next = timesteps[i + 1]
-                t_next_vec = torch.full((batch_size,), float(t_next), device=device)
+                    # Accuracy on masked positions (same as training)
+                    pred_tokens = torch.argmax(text_logits, dim=-1)
+                    text_accuracy = (
+                        (pred_tokens[current_mask] == target_tokens[current_mask])
+                        .float()
+                        .mean()
+                        .item()
+                    )
 
-                # Get logits for x_{t-Δt}
-                logits_xt_next = self.text_noise_schedule.logits_at_t(
-                    probs_x0, t_next_vec
-                )
-                probs_xt_next = torch.softmax(logits_xt_next, dim=-1)
+            # Suppress mask token in model predictions
+            text_logits[..., self.mask_token_id] = -1e6
+
+            if i == 0:
+                # Final step: take argmax
+                z_tm1 = text_logits.argmax(-1)
             else:
-                # Final step: sample from p(x₀)
-                probs_xt_next = probs_x0
+                # Compute conditional transition probabilities
+                _, sigma_t = self._get_sigmas(t_vec, eps=eps)
+                _, sigma_tm1 = self._get_sigmas(tm1_vec, eps=eps)
 
-            # Sample new tokens
-            probs_flat = probs_xt_next.reshape(-1, probs_xt_next.shape[-1])
-            sampled_flat = torch.multinomial(probs_flat, 1)
-            x = sampled_flat.view(batch_size, seq_len)
+                move_chance_t = 1 - torch.exp(-sigma_t)
+                move_chance_tm1 = 1 - torch.exp(-sigma_tm1)
+                move_chance_t = move_chance_t[:, None, None]
+                move_chance_tm1 = move_chance_tm1[:, None, None]
 
-            # Show progress
+                probs = text_logits.softmax(-1) * (move_chance_t - move_chance_tm1)
+                probs[:, :, self.mask_token_id] = move_chance_tm1[:, :, 0]
+                probs = probs / move_chance_t
+
+                z_tm1 = sample_categorical(probs)
+
+            # Copy flag: keep already-unmasked tokens unchanged
+            copy_flag = (z_t != self.mask_token_id).to(z_t.dtype)
+            z_t = copy_flag * z_t + (1 - copy_flag) * z_tm1
+
+            # Show progress (same format as training) — update every step
+            mask_ratio = (z_t == self.mask_token_id).float().mean().item()
+            pbar.set_postfix({
+                "t": f"{t.item():.3f}",
+                "Loss": f"{text_loss:.4f}",
+                "Acc": f"{text_accuracy:.4f}",
+                "mask%": f"{mask_ratio * 100:.1f}%",
+            })
+
+            # Print detailed log every 10% of steps
             if i % max(1, steps // 10) == 0:
-                mask_ratio = (x == self.mask_token_id).float().mean().item()
-                pbar.set_postfix({"t": f"{t:.3f}", "mask%": f"{mask_ratio * 100:.1f}%"})
+                print(f"  Step {steps - i:4d}/{steps} | t={t.item():.4f} | "
+                      f"Loss={text_loss:.4f} | Acc={text_accuracy:.4f} | "
+                      f"mask%={mask_ratio * 100:.1f}%")
 
-        return x
+        return z_t
 
     @torch.no_grad()
     def sample_l2t_ddim(
-        self, latents, seq_len=128, steps=100, temperature=1.0, eta=0.0
+        self, latents, seq_len=128, steps=100, temperature=1.0, eta=0.0,
+        target_tokens=None, target_attention_mask=None
     ):
         """
-        DDIM-style sampling for faster generation.
-        eta=0: deterministic, eta=1: stochastic (like DDPM)
+        DDIM-style sampling for faster generation with copy-flag.
+        eta=0: deterministic, eta=1: stochastic (like DDPM).
+        Only masked positions are updated; already-unmasked tokens are preserved.
+
+        Args:
+            target_tokens: Optional [batch, seq_len] ground truth token ids
+                           for computing cross-entropy loss (same as training).
+            target_attention_mask: Optional [batch, seq_len] attention mask from
+                           the target text tokenization. Matches training.
         """
         batch_size = latents.shape[0]
         device = self.device
+        eps = 1e-4
 
         # Ensure latents are correct shape
         if latents.dim() == 1:
             latents = latents.unsqueeze(0)
         latents = latents.to(device)
 
-        # Start from fully masked
-        x = torch.full(
-            (batch_size, seq_len), self.mask_token_id, dtype=torch.long, device=device
-        )
+        if target_tokens is not None:
+            target_tokens = target_tokens.to(device)
 
-        attention_mask = torch.ones(
-            (batch_size, seq_len), dtype=torch.bool, device=device
+        # Attention mask: use target's mask if provided (matches training)
+        if target_attention_mask is not None:
+            attention_mask = target_attention_mask.bool().to(device)
+        else:
+            attention_mask = torch.ones(
+                (batch_size, seq_len), dtype=torch.bool, device=device
+            )
+
+        # Initialize z_t: [MASK] where attention_mask=1, [PAD] where attention_mask=0
+        z_t = torch.full(
+            (batch_size, seq_len), self.tokenizer.pad_token_id, dtype=torch.long, device=device
         )
+        z_t[attention_mask] = self.mask_token_id
         latent_t = torch.zeros(batch_size, device=device)
 
-        # DDIM timesteps (subsampled)
-        eps = 1e-4
-        all_timesteps = torch.linspace(1.0 - eps, eps, steps + 1, device=device)
+        # Timestep schedule: evenly spaced from t_eps to 1-t_eps, iterated in reverse
+        ts = torch.linspace(eps, 1 - eps, steps + 1, device=device).unsqueeze(-1)
 
-        pbar = tqdm(range(steps), desc="DDIM sampling")
+        pbar = tqdm(range(steps - 1, -1, -1), desc="DDIM sampling")
         for i in pbar:
-            t = all_timesteps[i]
-            t_next = all_timesteps[i + 1]
+            t = ts[i]
+            tm1 = ts[max(0, i - 1)]
 
-            t_vec = torch.full((batch_size,), float(t), device=device)
+            t_vec = t.expand(batch_size)
+            tm1_vec = tm1.expand(batch_size)
 
             # Model predicts logits for x₀
             text_logits, _ = self.model(
-                text_tokens=x,
+                text_tokens=z_t,
                 latents=latents.unsqueeze(1),
                 text_timesteps=t_vec,
                 latent_timesteps=latent_t,
@@ -324,44 +396,76 @@ class ReverseDiffusionSampler:
             if temperature != 1.0:
                 text_logits = text_logits / temperature
 
-            # Get probabilities for x₀
-            probs_x0 = torch.softmax(text_logits, dim=-1)
+            # Compute loss on masked positions (same as training)
+            text_loss = 0.0
+            text_accuracy = 0.0
+            current_mask = (z_t == self.mask_token_id)
+            if current_mask.any() and target_tokens is not None:
+                vocab_size = text_logits.shape[-1]
+                text_loss_unmasked = F.cross_entropy(
+                    text_logits.view(-1, vocab_size),
+                    target_tokens.view(-1),
+                    ignore_index=-100,
+                    reduction="none",
+                ).view(batch_size, seq_len)
+                mask_sum = current_mask.sum().float().clamp(min=1)
+                text_loss = (text_loss_unmasked * current_mask).sum() / mask_sum
+                text_loss = text_loss.item()
 
-            # Get probabilities for x_t
-            probs_xt = self.text_noise_schedule.probs_at_t(probs_x0, t_vec)
-
-            # Get probabilities for x_{t_next} (deterministic or stochastic)
-            if eta > 0:
-                # Stochastic step
-                probs_xt_next = self.text_noise_schedule.probs_at_t(probs_x0, t_next)
-            else:
-                # Deterministic: take argmax of x₀ prediction
-                x0_pred = torch.argmax(probs_x0, dim=-1)
-                # Apply noise to get x_{t_next}
-                probs_xt_next = self.text_noise_schedule.probs_at_t(
-                    F.one_hot(x0_pred, num_classes=probs_x0.shape[-1]).float(), t_next
+                pred_tokens = torch.argmax(text_logits, dim=-1)
+                text_accuracy = (
+                    (pred_tokens[current_mask] == target_tokens[current_mask])
+                    .float()
+                    .mean()
+                    .item()
                 )
 
-            # Sample
-            probs_flat = probs_xt_next.reshape(-1, probs_xt_next.shape[-1])
-            if eta > 0:
-                sampled_flat = torch.multinomial(probs_flat, 1)
+            # Suppress mask token in model predictions
+            text_logits[..., self.mask_token_id] = -1e6
+
+            if i == 0:
+                # Final step: take argmax
+                z_tm1 = text_logits.argmax(-1)
             else:
-                sampled_flat = probs_flat.argmax(dim=-1, keepdim=True)
-            x = sampled_flat.view(batch_size, seq_len)
+                # Compute conditional transition probabilities
+                _, sigma_t = self._get_sigmas(t_vec, eps=eps)
+                _, sigma_tm1 = self._get_sigmas(tm1_vec, eps=eps)
 
-            # Show progress
-            mask_ratio = (x == self.mask_token_id).float().mean().item()
-            pbar.set_postfix({"t": f"{t:.3f}", "mask%": f"{mask_ratio * 100:.1f}%"})
+                move_chance_t = 1 - torch.exp(-sigma_t)
+                move_chance_tm1 = 1 - torch.exp(-sigma_tm1)
+                move_chance_t = move_chance_t[:, None, None]
+                move_chance_tm1 = move_chance_tm1[:, None, None]
 
-        return x
+                probs = text_logits.softmax(-1) * (move_chance_t - move_chance_tm1)
+                probs[:, :, self.mask_token_id] = move_chance_tm1[:, :, 0]
+                probs = probs / move_chance_t
+
+                if eta > 0:
+                    z_tm1 = sample_categorical(probs)
+                else:
+                    z_tm1 = probs.argmax(-1)
+
+            # Copy flag: keep already-unmasked tokens unchanged
+            copy_flag = (z_t != self.mask_token_id).to(z_t.dtype)
+            z_t = copy_flag * z_t + (1 - copy_flag) * z_tm1
+
+            # Show progress (same format as training)
+            mask_ratio = (z_t == self.mask_token_id).float().mean().item()
+            pbar.set_postfix({
+                "t": f"{t.item():.3f}",
+                "Loss": f"{text_loss:.4f}",
+                "Acc": f"{text_accuracy:.4f}",
+                "mask%": f"{mask_ratio * 100:.1f}%",
+            })
+
+        return z_t
 
     @torch.no_grad()
     def sample_l2t_with_loss_logging(
         self, latents, target_texts=None, seq_len=128, steps=1000, temperature=1.0
     ):
         """
-        L2T Sampling with Loss Logging - Computes text loss at each step if target texts are provided.
+        Correct MDLM reverse diffusion with loss logging.
 
         Args:
             latents: Latent embeddings [batch, latent_dim]
@@ -376,6 +480,7 @@ class ReverseDiffusionSampler:
         """
         batch_size = latents.shape[0]
         device = self.device
+        eps = 1e-4
 
         # Ensure latents are correct shape [batch, latent_dim]
         if latents.dim() == 1:
@@ -384,45 +489,53 @@ class ReverseDiffusionSampler:
 
         # Encode target texts if provided
         target_tokens = None
+        attention_mask = None
         if target_texts is not None:
-            target_tokens = self.tokenizer(
+            tokenized = self.tokenizer(
                 target_texts,
-                padding=True,
+                padding="max_length",
                 truncation=True,
                 max_length=seq_len,
                 return_tensors="pt",
-            )["input_ids"].to(device)
-            print(f"✓ Encoded {len(target_texts)} target texts for loss computation")
+            )
+            target_tokens = tokenized["input_ids"].to(device)
+            attention_mask = tokenized["attention_mask"].bool().to(device)
+            print(f"Encoded {len(target_texts)} target texts for loss computation")
 
-        # Start from fully masked tokens (t=1.0)
-        x = torch.full(
-            (batch_size, seq_len), self.mask_token_id, dtype=torch.long, device=device
-        )
+        # Fallback to all-ones if no target texts
+        if attention_mask is None:
+            attention_mask = torch.ones(
+                (batch_size, seq_len), dtype=torch.bool, device=device
+            )
 
-        # Attention mask (all tokens valid)
-        attention_mask = torch.ones(
-            (batch_size, seq_len), dtype=torch.bool, device=device
+        # Initialize z_t: [MASK] where attention_mask=1, [PAD] where attention_mask=0
+        z_t = torch.full(
+            (batch_size, seq_len), self.tokenizer.pad_token_id, dtype=torch.long, device=device
         )
+        z_t[attention_mask] = self.mask_token_id
 
         # Latent conditioning (clean, t=0)
         latent_t = torch.zeros(batch_size, device=device)
 
-        # Reverse time steps (from 1.0 to 0.0)
-        eps = 1e-4
-        timesteps = torch.linspace(1.0 - eps, eps, steps, device=device)
+        # Timestep schedule: evenly spaced from t_eps to 1-t_eps, iterated in reverse
+        ts = torch.linspace(eps, 1 - eps, steps + 1, device=device).unsqueeze(-1)
 
-        # Loss tracking (similar to training loop)
+        # Loss tracking
         losses = []
         mask_ratios = []
         text_accuracies = []
 
-        pbar = tqdm(timesteps, desc="Reverse diffusion (with loss logging)")
-        for i, t in enumerate(pbar):
-            t_vec = torch.full((batch_size,), float(t), device=device)
+        pbar = tqdm(range(steps - 1, -1, -1), desc="Reverse diffusion (with loss logging)")
+        for i in pbar:
+            t = ts[i]
+            tm1 = ts[max(0, i - 1)]
 
-            # Model predicts p(x₀ | x_t, z)
+            t_vec = t.expand(batch_size)
+            tm1_vec = tm1.expand(batch_size)
+
+            # Model predicts logits for x₀
             text_logits, _ = self.model(
-                text_tokens=x,
+                text_tokens=z_t,
                 latents=latents.unsqueeze(1),
                 text_timesteps=t_vec,
                 latent_timesteps=latent_t,
@@ -433,14 +546,12 @@ class ReverseDiffusionSampler:
             if temperature != 1.0:
                 text_logits = text_logits / temperature
 
-            # Compute text loss if target texts provided (similar to training)
+            # Compute text loss if target texts provided (before suppressing mask token)
             text_loss = None
             text_accuracy = 0.0
             if target_tokens is not None:
-                # Compute cross-entropy loss on current predictions
                 vocab_size = text_logits.shape[-1]
-                # Only compute loss on masked positions
-                current_mask = x == self.mask_token_id
+                current_mask = z_t == self.mask_token_id
 
                 if current_mask.any():
                     text_loss_unmasked = F.cross_entropy(
@@ -453,7 +564,6 @@ class ReverseDiffusionSampler:
                     mask_sum = current_mask.sum().float().clamp(min=1)
                     text_loss = (text_loss_unmasked * current_mask).sum() / mask_sum
 
-                    # Compute accuracy on masked positions
                     pred_tokens = torch.argmax(text_logits, dim=-1)
                     text_accuracy = (
                         (pred_tokens[current_mask] == target_tokens[current_mask])
@@ -465,44 +575,48 @@ class ReverseDiffusionSampler:
                 losses.append(text_loss.item() if text_loss is not None else 0.0)
                 text_accuracies.append(text_accuracy)
 
-            # Convert to probabilities for x₀
-            probs_x0 = torch.softmax(text_logits, dim=-1)
+            # Suppress mask token in model predictions
+            text_logits[..., self.mask_token_id] = -1e6
 
-            # Get transition probabilities for x_{t-Δt}
-            if i < steps - 1:
-                t_next = timesteps[i + 1]
-                t_next_vec = torch.full((batch_size,), float(t_next), device=device)
-
-                # Get logits for x_{t-Δt}
-                logits_xt_next = self.text_noise_schedule.logits_at_t(
-                    probs_x0, t_next_vec
-                )
-                probs_xt_next = torch.softmax(logits_xt_next, dim=-1)
+            if i == 0:
+                # Final step: take argmax
+                z_tm1 = text_logits.argmax(-1)
             else:
-                # Final step: sample from p(x₀)
-                probs_xt_next = probs_x0
+                # Compute conditional transition probabilities
+                _, sigma_t = self._get_sigmas(t_vec, eps=eps)
+                _, sigma_tm1 = self._get_sigmas(tm1_vec, eps=eps)
 
-            # Sample new tokens
-            probs_flat = probs_xt_next.reshape(-1, probs_xt_next.shape[-1])
-            sampled_flat = torch.multinomial(probs_flat, 1)
-            x = sampled_flat.view(batch_size, seq_len)
+                move_chance_t = 1 - torch.exp(-sigma_t)
+                move_chance_tm1 = 1 - torch.exp(-sigma_tm1)
+                move_chance_t = move_chance_t[:, None, None]
+                move_chance_tm1 = move_chance_tm1[:, None, None]
+
+                probs = text_logits.softmax(-1) * (move_chance_t - move_chance_tm1)
+                probs[:, :, self.mask_token_id] = move_chance_tm1[:, :, 0]
+                probs = probs / move_chance_t
+
+                z_tm1 = sample_categorical(probs)
+
+            # Copy flag: keep already-unmasked tokens unchanged
+            copy_flag = (z_t != self.mask_token_id).to(z_t.dtype)
+            z_t = copy_flag * z_t + (1 - copy_flag) * z_tm1
 
             # Track mask ratio
-            mask_ratio = (x == self.mask_token_id).float().mean().item()
+            mask_ratio = (z_t == self.mask_token_id).float().mean().item()
             mask_ratios.append(mask_ratio)
 
-            # Log progress similar to training loop
+            # Log progress
             if i % max(1, steps // 10) == 0:
                 pbar.set_postfix(
                     {
-                        "t": f"{t:.3f}",
+                        "t": f"{t.item():.3f}",
                         "mask%": f"{mask_ratio * 100:.1f}%",
                         "loss": f"{text_loss.item() if text_loss is not None else 0.0:.4f}",
                         "acc": f"{text_accuracy:.4f}",
                     }
                 )
 
-        return x, {
+        return z_t, {
             "losses": losses,
             "mask_ratios": mask_ratios,
             "text_accuracies": text_accuracies,
@@ -519,7 +633,7 @@ class ReverseDiffusionSampler:
         eta=0.0,
     ):
         """
-        DDIM-style sampling with loss logging.
+        DDIM-style sampling with loss logging and copy-flag.
 
         Args:
             latents: Latent embeddings [batch, latent_dim]
@@ -535,6 +649,7 @@ class ReverseDiffusionSampler:
         """
         batch_size = latents.shape[0]
         device = self.device
+        eps = 1e-4
 
         # Ensure latents are correct shape
         if latents.dim() == 1:
@@ -543,44 +658,50 @@ class ReverseDiffusionSampler:
 
         # Encode target texts if provided
         target_tokens = None
+        attention_mask = None
         if target_texts is not None:
-            target_tokens = self.tokenizer(
+            tokenized = self.tokenizer(
                 target_texts,
-                padding=True,
+                padding="max_length",
                 truncation=True,
                 max_length=seq_len,
                 return_tensors="pt",
-            )["input_ids"].to(device)
-            print(f"✓ Encoded {len(target_texts)} target texts for loss computation")
+            )
+            target_tokens = tokenized["input_ids"].to(device)
+            attention_mask = tokenized["attention_mask"].bool().to(device)
+            print(f"Encoded {len(target_texts)} target texts for loss computation")
 
-        # Start from fully masked
-        x = torch.full(
-            (batch_size, seq_len), self.mask_token_id, dtype=torch.long, device=device
-        )
+        # Fallback to all-ones if no target texts
+        if attention_mask is None:
+            attention_mask = torch.ones(
+                (batch_size, seq_len), dtype=torch.bool, device=device
+            )
 
-        attention_mask = torch.ones(
-            (batch_size, seq_len), dtype=torch.bool, device=device
+        # Initialize z_t: [MASK] where attention_mask=1, [PAD] where attention_mask=0
+        z_t = torch.full(
+            (batch_size, seq_len), self.tokenizer.pad_token_id, dtype=torch.long, device=device
         )
+        z_t[attention_mask] = self.mask_token_id
         latent_t = torch.zeros(batch_size, device=device)
 
-        # DDIM timesteps (subsampled)
-        eps = 1e-4
-        all_timesteps = torch.linspace(1.0 - eps, eps, steps + 1, device=device)
+        # Timestep schedule: evenly spaced from t_eps to 1-t_eps, iterated in reverse
+        ts = torch.linspace(eps, 1 - eps, steps + 1, device=device).unsqueeze(-1)
 
         losses = []
         mask_ratios = []
         text_accuracies = []
 
-        pbar = tqdm(range(steps), desc="DDIM sampling (with loss logging)")
+        pbar = tqdm(range(steps - 1, -1, -1), desc="DDIM sampling (with loss logging)")
         for i in pbar:
-            t = all_timesteps[i]
-            t_next = all_timesteps[i + 1]
+            t = ts[i]
+            tm1 = ts[max(0, i - 1)]
 
-            t_vec = torch.full((batch_size,), float(t), device=device)
+            t_vec = t.expand(batch_size)
+            tm1_vec = tm1.expand(batch_size)
 
             # Model predicts logits for x₀
             text_logits, _ = self.model(
-                text_tokens=x,
+                text_tokens=z_t,
                 latents=latents.unsqueeze(1),
                 text_timesteps=t_vec,
                 latent_timesteps=latent_t,
@@ -590,12 +711,12 @@ class ReverseDiffusionSampler:
             if temperature != 1.0:
                 text_logits = text_logits / temperature
 
-            # Compute text loss if target texts provided
+            # Compute text loss if target texts provided (before suppressing mask token)
             text_loss = None
             text_accuracy = 0.0
             if target_tokens is not None:
                 vocab_size = text_logits.shape[-1]
-                current_mask = x == self.mask_token_id
+                current_mask = z_t == self.mask_token_id
 
                 if current_mask.any():
                     text_loss_unmasked = F.cross_entropy(
@@ -619,43 +740,49 @@ class ReverseDiffusionSampler:
                 losses.append(text_loss.item() if text_loss is not None else 0.0)
                 text_accuracies.append(text_accuracy)
 
-            # Get probabilities for x₀
-            probs_x0 = torch.softmax(text_logits, dim=-1)
+            # Suppress mask token in model predictions
+            text_logits[..., self.mask_token_id] = -1e6
 
-            # Get probabilities for x_t
-            probs_xt = self.text_noise_schedule.probs_at_t(probs_x0, t_vec)
-
-            # Get probabilities for x_{t_next}
-            if eta > 0:
-                probs_xt_next = self.text_noise_schedule.probs_at_t(probs_x0, t_next)
+            if i == 0:
+                # Final step: take argmax
+                z_tm1 = text_logits.argmax(-1)
             else:
-                x0_pred = torch.argmax(probs_x0, dim=-1)
-                probs_xt_next = self.text_noise_schedule.probs_at_t(
-                    F.one_hot(x0_pred, num_classes=probs_x0.shape[-1]).float(), t_next
-                )
+                # Compute conditional transition probabilities
+                _, sigma_t = self._get_sigmas(t_vec, eps=eps)
+                _, sigma_tm1 = self._get_sigmas(tm1_vec, eps=eps)
 
-            # Sample
-            probs_flat = probs_xt_next.reshape(-1, probs_xt_next.shape[-1])
-            if eta > 0:
-                sampled_flat = torch.multinomial(probs_flat, 1)
-            else:
-                sampled_flat = probs_flat.argmax(dim=-1, keepdim=True)
-            x = sampled_flat.view(batch_size, seq_len)
+                move_chance_t = 1 - torch.exp(-sigma_t)
+                move_chance_tm1 = 1 - torch.exp(-sigma_tm1)
+                move_chance_t = move_chance_t[:, None, None]
+                move_chance_tm1 = move_chance_tm1[:, None, None]
 
-            mask_ratio = (x == self.mask_token_id).float().mean().item()
+                probs = text_logits.softmax(-1) * (move_chance_t - move_chance_tm1)
+                probs[:, :, self.mask_token_id] = move_chance_tm1[:, :, 0]
+                probs = probs / move_chance_t
+
+                if eta > 0:
+                    z_tm1 = sample_categorical(probs)
+                else:
+                    z_tm1 = probs.argmax(-1)
+
+            # Copy flag: keep already-unmasked tokens unchanged
+            copy_flag = (z_t != self.mask_token_id).to(z_t.dtype)
+            z_t = copy_flag * z_t + (1 - copy_flag) * z_tm1
+
+            mask_ratio = (z_t == self.mask_token_id).float().mean().item()
             mask_ratios.append(mask_ratio)
 
             if i % max(1, steps // 10) == 0:
                 pbar.set_postfix(
                     {
-                        "t": f"{t:.3f}",
+                        "t": f"{t.item():.3f}",
                         "mask%": f"{mask_ratio * 100:.1f}%",
                         "loss": f"{text_loss.item() if text_loss is not None else 0.0:.4f}",
                         "acc": f"{text_accuracy:.4f}",
                     }
                 )
 
-        return x, {
+        return z_t, {
             "losses": losses,
             "mask_ratios": mask_ratios,
             "text_accuracies": text_accuracies,
@@ -684,7 +811,16 @@ class ReverseDiffusionSampler:
         return texts
 
     def load_latents(self, npy_dir, num_samples=None):
-        """Load .npy files"""
+        """Load .npy latent files and corresponding .txt files.
+
+        Expects directory structure:
+            <base>/latents/train/<name>.npy
+            <base>/texts/train/<name>.txt
+
+        Returns:
+            latents: Tensor [N, latent_dim]
+            texts: List of strings (or None if texts dir not found)
+        """
         import glob
 
         files = sorted(glob.glob(os.path.join(npy_dir, "*.npy")))
@@ -696,7 +832,17 @@ class ReverseDiffusionSampler:
         elif num_samples:
             files = files[:num_samples]
 
+        # Find texts directory: npy_dir=.../latents/train/ -> .../texts/train/
+        npy_dir_abs = os.path.abspath(npy_dir)
+        texts_dir = npy_dir_abs.replace("/latents/", "/texts/")
+        has_texts = os.path.isdir(texts_dir)
+        if has_texts:
+            print(f"Found texts directory: {texts_dir}")
+        else:
+            print(f"No texts directory found at {texts_dir}, loss will not be computed")
+
         latents = []
+        texts = []
         for f in tqdm(files, desc="Loading latents"):
             data = np.load(f)
             latent_dim = 32  # From your config
@@ -706,11 +852,21 @@ class ReverseDiffusionSampler:
                 data = np.pad(data, (0, latent_dim - data.shape[0]))
             latents.append(torch.from_numpy(data).float())
 
+            # Load corresponding text
+            if has_texts:
+                basename = os.path.splitext(os.path.basename(f))[0]
+                txt_path = os.path.join(texts_dir, basename + ".txt")
+                if os.path.exists(txt_path):
+                    with open(txt_path, "r", encoding="utf-8") as tf:
+                        texts.append(tf.read().strip())
+                else:
+                    texts.append("")
+
         if latents:
-            return torch.stack(latents, dim=0)
+            return torch.stack(latents, dim=0), texts if has_texts else None
 
         print(f"No .npy files found, creating random latents")
-        return torch.randn(num_samples or 3, 32)
+        return torch.randn(num_samples or 3, 32), None
 
 
 def main():
@@ -744,19 +900,22 @@ def main():
 
     args = parser.parse_args()
 
-    # Load target texts if provided
+    # Create sampler
+    sampler = ReverseDiffusionSampler(args.checkpoint, args.config)
+
+    # Load latents and corresponding texts (auto-discovered from sibling texts/ dir)
+    latents, loaded_texts = sampler.load_latents(args.npy_dir, args.num_samples)
+    print(f"Loaded {latents.shape[0]} latents")
+
+    # Use --target_texts file if provided, otherwise use auto-discovered texts
     target_texts = None
     if args.target_texts and os.path.exists(args.target_texts):
         with open(args.target_texts, "r") as f:
             target_texts = [line.strip() for line in f.readlines() if line.strip()]
         print(f"Loaded {len(target_texts)} target texts from {args.target_texts}")
-
-    # Create sampler
-    sampler = ReverseDiffusionSampler(args.checkpoint, args.config)
-
-    # Load latents
-    latents = sampler.load_latents(args.npy_dir, args.num_samples)
-    print(f"Loaded {latents.shape[0]} latents")
+    elif loaded_texts:
+        target_texts = loaded_texts
+        print(f"Using {len(target_texts)} texts auto-loaded from texts/ directory")
 
     # Generate
     output_dir = Path(args.output_dir)
@@ -801,12 +960,29 @@ def main():
             all_results["mask_ratios"].extend(results.get("mask_ratios", []))
             all_results["text_accuracies"].extend(results.get("text_accuracies", []))
         else:
+            # Tokenize target texts for loss computation and attention mask
+            batch_target_tokens = None
+            batch_attention_mask = None
+            if target_texts:
+                batch_texts = target_texts[i : i + args.batch_size]
+                tokenized = sampler.tokenizer(
+                    batch_texts,
+                    padding="max_length",
+                    truncation=True,
+                    max_length=args.seq_len,
+                    return_tensors="pt",
+                )
+                batch_target_tokens = tokenized["input_ids"]
+                batch_attention_mask = tokenized["attention_mask"]
+
             if args.algorithm == "reverse":
                 tokens = sampler.sample_l2t(
                     batch,
                     seq_len=args.seq_len,
                     steps=args.steps,
                     temperature=args.temperature,
+                    target_tokens=batch_target_tokens,
+                    target_attention_mask=batch_attention_mask,
                 )
             else:  # ddim
                 tokens = sampler.sample_l2t_ddim(
@@ -815,6 +991,8 @@ def main():
                     steps=args.steps,
                     temperature=args.temperature,
                     eta=args.eta,
+                    target_tokens=batch_target_tokens,
+                    target_attention_mask=batch_attention_mask,
                 )
 
         texts = sampler.decode(tokens)
@@ -822,7 +1000,9 @@ def main():
 
         for j, text in enumerate(texts):
             print(f"\nSample {i + j + 1}:")
-            print(f"{text}")
+            if target_texts:
+                print(f"  [TARGET] {target_texts[i + j][:200]}")
+            print(f"  [GENERATED] {text[:200]}")
 
     # Save results
     with open(output_dir / "results.json", "w", encoding="utf-8") as f:

@@ -1,0 +1,204 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{meng2022}
+\citation{li2022}
+\citation{lovelace2023}
+\citation{zhang2023}
+\citation{sahoo2024}
+\citation{lou2024}
+\citation{nie2025llada}
+\citation{liu2025dream}
+\citation{nisonoff2025}
+\citation{nisonoff2025}
+\citation{arriola2025remdm}
+\citation{xu2025edlm}
+\citation{lovelace2025starlm}
+\citation{ladir2025}
+\citation{esser2024}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\newlabel{sec:intro}{{1}{1}{Introduction}{section.1}{}}
+\citation{sahoo2024}
+\citation{lou2024}
+\citation{arriola2025bd3lm}
+\citation{liu2025dream}
+\citation{nie2025llada}
+\citation{li2022}
+\citation{lovelace2023}
+\citation{zhang2023}
+\citation{liu2023latentops}
+\citation{reid2023}
+\citation{dhariwal2021}
+\citation{ho2022}
+\citation{black2024}
+\citation{wang2025}
+\citation{nisonoff2025}
+\citation{bansal2024}
+\citation{arriola2025remdm}
+\citation{esser2024}
+\citation{zhou2025transfusion}
+\citation{sahoo2025duo}
+\citation{xu2025tabdiff}
+\citation{zhou2025ccdd}
+\@writefile{toc}{\contentsline {paragraph}{Contributions.}{2}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{2}{section.2}\protected@file@percent }
+\newlabel{sec:related}{{2}{2}{Related Work}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Discrete Masked Diffusion Language Models}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Continuous Text Diffusion and Editing}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Guidance Methods for Diffusion Models}{2}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Multimodal Diffusion Transformers}{2}{subsection.2.4}\protected@file@percent }
+\citation{lddm2025}
+\citation{editext2025}
+\citation{sahoo2024}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces MMDiT model architecture.}}{3}{table.caption.5}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:architecture}{{1}{3}{MMDiT model architecture}{table.caption.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Method}{3}{section.3}\protected@file@percent }
+\newlabel{sec:method}{{3}{3}{Method}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Preliminaries}{3}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Masked Discrete Diffusion.}{3}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Joint Text-Latent MMDiT.}{3}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}LSME: Latent-Steered Masked Editing}{3}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Step 1: Partial Masking.}{3}{section*.6}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces LSME: Latent-Steered Masked Editing}}{4}{algorithm.1}\protected@file@percent }
+\newlabel{alg:lsme}{{1}{4}{LSME: Latent-Steered Masked Editing}{algorithm.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Step 2: Latent Replacement.}{4}{section*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Step 3: Partial Reverse Diffusion.}{4}{section*.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Why LSME works.}{4}{section*.9}\protected@file@percent }
+\newlabel{prop:copy_flag}{{1}{4}{Content Preservation}{proposition.1}{}}
+\newlabel{prop:edit_strength}{{2}{5}{Edit Strength Monotonicity}{proposition.2}{}}
+\newlabel{prop:sss}{{3}{5}{SSS Bounds}{proposition.3}{}}
+\newlabel{prop:mts}{{4}{5}{MTS Baseline}{proposition.4}{}}
+\@writefile{toc}{\contentsline {paragraph}{Key design choices.}{5}{section*.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Target Latent Construction}{5}{subsection.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Mask Strategies}{5}{subsection.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Latent Geometry Analysis}{5}{section.4}\protected@file@percent }
+\newlabel{sec:geometry}{{4}{5}{Latent Geometry Analysis}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Semantic Smoothness Score (SSS)}{5}{subsection.4.1}\protected@file@percent }
+\citation{zhou2025ccdd}
+\citation{congenbench2024}
+\citation{fang2024editeval}
+\citation{dinfer2025}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces \textbf  {LSME editing pipeline.} \textbf  {Step~1 (Partial Masking):} A fraction $r$ of source tokens are replaced with {[MASK]}; the remaining tokens are preserved throughout by a copy flag. \textbf  {Step~2 (Latent Replacement):} The source latent is replaced with a target latent $\mathbf  {z}_{\mathrm  {target}}$ encoding the desired attribute (e.g., positive sentiment), injected as a clean signal ($t_z\!=\!0$). \textbf  {Step~3 (Partial Reverse Diffusion):} The MMDiT jointly attends to text tokens and $\mathbf  {z}_{\mathrm  {target}}$ via shared QKV attention, denoising only the masked positions from $t_{\mathrm  {entry}}$ to $0$. Green tokens in the output mark newly generated content; blue tokens are copied verbatim from the source.}}{6}{figure.caption.12}\protected@file@percent }
+\newlabel{fig:lsme_pipeline}{{1}{6}{\textbf {LSME editing pipeline.} \textbf {Step~1 (Partial Masking):} A fraction $r$ of source tokens are replaced with {[MASK]}; the remaining tokens are preserved throughout by a copy flag. \textbf {Step~2 (Latent Replacement):} The source latent is replaced with a target latent $\mathbf {z}_{\mathrm {target}}$ encoding the desired attribute (e.g., positive sentiment), injected as a clean signal ($t_z\!=\!0$). \textbf {Step~3 (Partial Reverse Diffusion):} The MMDiT jointly attends to text tokens and $\mathbf {z}_{\mathrm {target}}$ via shared QKV attention, denoising only the masked positions from $t_{\mathrm {entry}}$ to $0$. Green tokens in the output mark newly generated content; blue tokens are copied verbatim from the source}{figure.caption.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Monotonic Transition Score (MTS)}{6}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}DLM-Eval Suite}{6}{section.5}\protected@file@percent }
+\newlabel{sec:eval_suite}{{5}{6}{DLM-Eval Suite}{section.5}{}}
+\citation{sahoo2024}
+\citation{arriola2025remdm}
+\citation{liu2023latentops}
+\citation{reid2023}
+\citation{zhang2023}
+\citation{lovelace2023}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces DLM-Eval Suite: 6-pillar evaluation metrics.}}{7}{table.caption.13}\protected@file@percent }
+\newlabel{tab:eval_suite}{{2}{7}{DLM-Eval Suite: 6-pillar evaluation metrics}{table.caption.13}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Evaluation datasets.}}{7}{table.caption.16}\protected@file@percent }
+\newlabel{tab:datasets}{{3}{7}{Evaluation datasets}{table.caption.16}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Experiments}{7}{section.6}\protected@file@percent }
+\newlabel{sec:experiments}{{6}{7}{Experiments}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Experimental Setup}{7}{subsection.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Research Questions.}{7}{section*.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Datasets.}{7}{table.caption.16}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Baselines.}{7}{section*.17}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Implementation Details.}{7}{section*.18}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Main Results (RQ1, RQ4)}{7}{subsection.6.2}\protected@file@percent }
+\newlabel{sec:main_results}{{6.2}{7}{Main Results (RQ1, RQ4)}{subsection.6.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{Yelp Sentiment Transfer.}{7}{table.caption.20}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Generalization (RQ4).}{7}{section*.21}\protected@file@percent }
+\citation{nisonoff2025}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Sentiment transfer on Yelp (500 negative $\to $ positive). \textbf  {Bold} = best. \textcolor {red}{Red} = to be filled.}}{8}{table.caption.20}\protected@file@percent }
+\newlabel{tab:yelp_results}{{4}{8}{Sentiment transfer on Yelp (500 negative $\to $ positive). \best {Bold} = best. \tbd {Red} = to be filled}{table.caption.20}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Effect of mask ratio on Yelp sentiment transfer.}}{8}{table.caption.23}\protected@file@percent }
+\newlabel{tab:ablation_mask_ratio}{{5}{8}{Effect of mask ratio on Yelp sentiment transfer}{table.caption.23}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Ablation Study (RQ2)}{8}{subsection.6.3}\protected@file@percent }
+\newlabel{sec:ablation}{{6.3}{8}{Ablation Study (RQ2)}{subsection.6.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{Mask Ratio.}{8}{table.caption.23}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Mask Mode and Latent Source.}{8}{section*.24}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}Latent Geometry Analysis (RQ3)}{8}{subsection.6.4}\protected@file@percent }
+\newlabel{sec:geometry_results}{{6.4}{8}{Latent Geometry Analysis (RQ3)}{subsection.6.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Efficiency Analysis (RQ5)}{8}{subsection.6.5}\protected@file@percent }
+\newlabel{sec:efficiency}{{6.5}{8}{Efficiency Analysis (RQ5)}{subsection.6.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Discussion}{8}{section.7}\protected@file@percent }
+\newlabel{sec:discussion}{{7}{8}{Discussion}{section.7}{}}
+\@writefile{toc}{\contentsline {paragraph}{Why does LSME work?}{8}{section*.26}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{The cost of simplicity.}{8}{section*.27}\protected@file@percent }
+\citation{liu2025dream,nie2025llada}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Latent geometry metrics. SSS and MTS measured on 10-point SLERP interpolation between attribute centroids (5 samples per point).}}{9}{table.caption.25}\protected@file@percent }
+\newlabel{tab:geometry}{{6}{9}{Latent geometry metrics. SSS and MTS measured on 10-point SLERP interpolation between attribute centroids (5 samples per point)}{table.caption.25}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Feature comparison. \text  {$\mathsurround \z@ \mathchar "458$}\ = supported, \textcolor {red}{$\times $}\ = not supported.}}{9}{table.caption.29}\protected@file@percent }
+\newlabel{tab:feature_comparison}{{7}{9}{Feature comparison. \gc \ = supported, \rx \ = not supported}{table.caption.29}{}}
+\@writefile{toc}{\contentsline {paragraph}{Feature comparison.}{9}{table.caption.29}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{When might LSME fail?}{9}{section*.30}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Limitations}{9}{section.8}\protected@file@percent }
+\newlabel{sec:limitations}{{8}{9}{Limitations}{section.8}{}}
+\bibstyle{plainnat}
+\bibdata{references}
+\bibcite{dinfer2025}{{1}{2025{a}}{{anonymous}}{{}}}
+\bibcite{editext2025}{{2}{2025{b}}{{anonymous}}{{}}}
+\bibcite{lddm2025}{{3}{2025{c}}{{anonymous}}{{}}}
+\bibcite{arriola2025remdm}{{4}{2025{a}}{{Arriola et~al.}}{{Arriola, Gokaslan, and Kuleshov}}}
+\bibcite{arriola2025bd3lm}{{5}{2025{b}}{{Arriola et~al.}}{{Arriola, Gokaslan, Marroquin, and Kuleshov}}}
+\bibcite{congenbench2024}{{6}{2024}{{Ashok et~al.}}{{}}}
+\bibcite{bansal2024}{{7}{2024}{{Bansal et~al.}}{{Bansal, Chu, Schwarzschild, Sengupta, Goldblum, Geiping, and Goldstein}}}
+\bibcite{black2024}{{8}{2024}{{Black et~al.}}{{Black, Janner, Du, Kostrikov, and Levine}}}
+\bibcite{dhariwal2021}{{9}{2021}{{Dhariwal and Nichol}}{{}}}
+\bibcite{esser2024}{{10}{2024}{{Esser et~al.}}{{Esser, Kulal, Blattmann, Entezari, M{\"u}ller, Saini, Levi, Lorber, Sauer, Boesel, et~al.}}}
+\bibcite{fang2024editeval}{{11}{2024}{{Fang et~al.}}{{}}}
+\bibcite{ho2022}{{12}{2022}{{Ho and Salimans}}{{}}}
+\bibcite{li2022}{{13}{2022}{{Li et~al.}}{{Li, Thickstun, Gulrajani, Liang, and Hashimoto}}}
+\bibcite{liu2023latentops}{{14}{2023}{{Liu et~al.}}{{Liu, Feng, Gao, Yang, Liang, Bai, Yan, Shang, Jiang, and Liu}}}
+\bibcite{liu2025dream}{{15}{2025}{{Liu et~al.}}{{}}}
+\bibcite{lou2024}{{16}{2024}{{Lou et~al.}}{{Lou, Meng, and Ermon}}}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{10}{section.9}\protected@file@percent }
+\newlabel{sec:conclusion}{{9}{10}{Conclusion}{section.9}{}}
+\bibcite{lovelace2023}{{17}{2023}{{Lovelace et~al.}}{{Lovelace, Kibbe, and Mortazavi}}}
+\bibcite{lovelace2025starlm}{{18}{2025}{{Lovelace et~al.}}{{Lovelace, Kibbe, and Mortazavi}}}
+\bibcite{ladir2025}{{19}{2025}{{Ma et~al.}}{{}}}
+\bibcite{meng2022}{{20}{2022}{{Meng et~al.}}{{Meng, He, Song, Song, Wu, Zhu, and Ermon}}}
+\bibcite{nie2025llada}{{21}{2025}{{Nie et~al.}}{{}}}
+\bibcite{nisonoff2025}{{22}{2025}{{Nisonoff et~al.}}{{Nisonoff, Xiong, Allenspach, and Listgarten}}}
+\bibcite{reid2023}{{23}{2023}{{Reid et~al.}}{{Reid, Hellendoorn, and Neubig}}}
+\bibcite{sahoo2025duo}{{24}{2025}{{Sahoo and Kuleshov}}{{}}}
+\bibcite{sahoo2024}{{25}{2024}{{Sahoo et~al.}}{{Sahoo, Arriola, Schiff, Gokaslan, Marroquin, Chiu, Rush, and Kuleshov}}}
+\bibcite{wang2025}{{26}{2025}{{Wang et~al.}}{{Wang, Gruver, Karaletsos, and Wilson}}}
+\bibcite{xu2025tabdiff}{{27}{2025{a}}{{Xu et~al.}}{{Xu, Gao, Lan, and Tang}}}
+\bibcite{xu2025edlm}{{28}{2025{b}}{{Xu et~al.}}{{}}}
+\bibcite{zhang2023}{{29}{2023}{{Zhang et~al.}}{{Zhang, Wang, Liang, Peng, Zettlemoyer, and Yih}}}
+\bibcite{zhou2025ccdd}{{30}{2025{a}}{{Zhou et~al.}}{{Zhou, Yang, Hu, Wang, Zhang, Zhang, Mackey, Jaakkola, Bates, and Zhang}}}
+\bibcite{zhou2025transfusion}{{31}{2025{b}}{{Zhou et~al.}}{{Zhou, Yu, Babu, Tirumala, Yasunaga, Shamber, Katz, Lian, Passos, Zettlemoyer, et~al.}}}
+\@writefile{toc}{\contentsline {section}{\numberline {A}Proofs of Formal Properties}{12}{appendix.A}\protected@file@percent }
+\newlabel{app:proofs}{{A}{12}{Proofs of Formal Properties}{appendix.A}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Topic transfer on Amazon Reviews (electronics $\to $ books).}}{13}{table.caption.32}\protected@file@percent }
+\newlabel{tab:amazon_results}{{8}{13}{Topic transfer on Amazon Reviews (electronics $\to $ books)}{table.caption.32}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Formality transfer on GYAFC (informal $\to $ formal).}}{13}{table.caption.33}\protected@file@percent }
+\newlabel{tab:gyafc_results}{{9}{13}{Formality transfer on GYAFC (informal $\to $ formal)}{table.caption.33}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {B}Additional Main Results}{13}{appendix.B}\protected@file@percent }
+\newlabel{app:additional_results}{{B}{13}{Additional Main Results}{appendix.B}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {C}Additional Ablations}{13}{appendix.C}\protected@file@percent }
+\newlabel{app:ablation_extra}{{C}{13}{Additional Ablations}{appendix.C}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {C.1}Mask Mode}{13}{subsection.C.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Effect of mask mode on Yelp ($r=0.3$).}}{13}{table.caption.34}\protected@file@percent }
+\newlabel{tab:ablation_mask_mode}{{10}{13}{Effect of mask mode on Yelp ($r=0.3$)}{table.caption.34}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {C.2}Latent Source}{13}{subsection.C.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {C.3}Diffusion Steps}{13}{subsection.C.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {C.4}Temperature}{13}{subsection.C.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {D}Efficiency Benchmarks}{13}{appendix.D}\protected@file@percent }
+\newlabel{app:efficiency}{{D}{13}{Efficiency Benchmarks}{appendix.D}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {E}LSME Editing Hyperparameters}{13}{appendix.E}\protected@file@percent }
+\newlabel{app:hyperparams}{{E}{13}{LSME Editing Hyperparameters}{appendix.E}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {F}Reproducibility}{13}{appendix.F}\protected@file@percent }
+\newlabel{app:reproducibility}{{F}{13}{Reproducibility}{appendix.F}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Effect of latent source on Yelp ($r=0.3$, 100 steps).}}{14}{table.caption.35}\protected@file@percent }
+\newlabel{tab:ablation_latent_source}{{11}{14}{Effect of latent source on Yelp ($r=0.3$, 100 steps)}{table.caption.35}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Effect of reverse diffusion steps on Yelp ($r=0.3$, random mask).}}{14}{table.caption.36}\protected@file@percent }
+\newlabel{tab:ablation_steps}{{12}{14}{Effect of reverse diffusion steps on Yelp ($r=0.3$, random mask)}{table.caption.36}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {G}Gap Resolution Summary}{14}{appendix.G}\protected@file@percent }
+\newlabel{app:gaps}{{G}{14}{Gap Resolution Summary}{appendix.G}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Effect of sampling temperature on Yelp ($r=0.3$, 100 steps).}}{15}{table.caption.37}\protected@file@percent }
+\newlabel{tab:ablation_temperature}{{13}{15}{Effect of sampling temperature on Yelp ($r=0.3$, 100 steps)}{table.caption.37}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces Computational cost comparison (Yelp, batch size 32, 512 tokens).}}{15}{table.caption.38}\protected@file@percent }
+\newlabel{tab:efficiency}{{14}{15}{Computational cost comparison (Yelp, batch size 32, 512 tokens)}{table.caption.38}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces LSME editing hyperparameters.}}{15}{table.caption.39}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces Gap resolution summary.}}{15}{table.caption.40}\protected@file@percent }
+\gdef \@abspage@last{15}

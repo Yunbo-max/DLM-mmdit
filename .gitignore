@@ -1,0 +1,27 @@
+# Secrets
+.env
+.claude/commands/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Checkpoints and data (too large for git)
+checkpoints/
+*.pt
+*.ckpt
+wandb/

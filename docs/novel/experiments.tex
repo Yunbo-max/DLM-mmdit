@@ -1,0 +1,594 @@
+\documentclass{article}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage[margin=1in]{geometry}
+
+\newcommand{\tbd}[1]{\textcolor{red}{#1}}  % Mark to-be-filled cells
+\newcommand{\best}[1]{\textbf{#1}}          % Bold best result
+
+\title{Experiments: LSME --- Latent-Steered Masked Editing}
+\author{Anonymous}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+% ============================================================
+\section{Experimental Design}
+% ============================================================
+
+\subsection{Research Questions}
+
+We design experiments to answer the following questions:
+
+\begin{enumerate}
+  \item \textbf{RQ1 (Overall):} Does LSME enable controllable text editing in discrete masked DLMs, outperforming existing style transfer baselines on attribute accuracy while preserving content?
+  \item \textbf{RQ2 (Component):} How does each design choice (mask ratio, mask mode, latent source) contribute to editing performance? (ablation)
+  \item \textbf{RQ3 (Geometry):} Does the MMDiT latent space exhibit smooth, structured attribute interpolation as measured by SSS and MTS?
+  \item \textbf{RQ4 (Generalization):} Does LSME generalize across attributes (sentiment, topic, formality) and datasets?
+  \item \textbf{RQ5 (Efficiency):} What is the computational cost of LSME editing compared to baselines?
+\end{enumerate}
+
+\subsection{Experimental Protocol}
+
+We follow a unified evaluation protocol across all experiments. For each configuration, we edit 500 test samples drawn from the test split of the respective dataset. To ensure statistical reliability, we report mean $\pm$ std across 3 random seeds for all main results (RQ1, RQ4). Ablation experiments (RQ2) use a single seed for efficiency, as we are interested in relative trends rather than absolute numbers.
+
+All methods---baselines and LSME---are evaluated using the identical 6-pillar DLM-Eval Suite on the same test inputs, ensuring a fair comparison. Experiments run on the same hardware (Section~\ref{sec:hardware}) with identical batch sizes and sequence lengths.
+
+The 48 experiments are organized into 7 groups by dependency:
+\begin{enumerate}
+  \item \textbf{Days 1:} Baselines (10 runs, independent, parallelizable)
+  \item \textbf{Day 2:} Main LSME runs on Yelp and Amazon (5 runs)
+  \item \textbf{Day 3:} Main LSME runs on GYAFC + full evaluation of all main results (5 runs)
+  \item \textbf{Day 4:} Ablations---mask ratio and mask mode (8 runs, 4 reuse main results)
+  \item \textbf{Day 5:} Ablations---diffusion steps, temperature, latent source (13 runs, 5 reuse main results)
+  \item \textbf{Day 6:} Latent geometry analysis---SSS, MTS, cluster metrics (4 runs)
+  \item \textbf{Day 7:} Efficiency profiling + final compilation (3 runs)
+\end{enumerate}
+
+\noindent Of the 48 total experiments, 34 require new computation while 14 reuse outputs from earlier runs (e.g., mask ratio $r=0.3$ at 100 steps is both the main Yelp result EXP-M01 and the ablation baseline EXP-A02).
+
+
+% ============================================================
+\section{Setup}
+\label{sec:setup}
+% ============================================================
+
+\subsection{Datasets}
+
+We evaluate on three attribute-transfer benchmarks spanning sentiment, topic, and formality. Each benchmark defines a source attribute (to edit from) and a target attribute (to edit toward). Table~\ref{tab:datasets} summarizes the datasets.
+
+For Yelp, we select 500 negative reviews from the test set as source texts and compute the positive-sentiment latent centroid from the training set. For Amazon, we select 500 electronics reviews and target the books domain. For GYAFC, we select 500 informal sentences and target formal style.
+
+\begin{table}[h]
+\centering
+\caption{Datasets used in experiments.}
+\label{tab:datasets}
+\begin{tabular}{llrrl}
+\toprule
+\textbf{Dataset} & \textbf{Task} & \textbf{Train} & \textbf{Test} & \textbf{Source} \\
+\midrule
+Yelp Polarity & Sentiment (neg$\to$pos) & 560K & 38K & \href{https://huggingface.co/datasets/yelp_polarity}{HuggingFace} \\
+Amazon Reviews & Topic transfer (electronics$\to$books) & 3.6M & 400K & \href{https://huggingface.co/datasets/amazon_polarity}{HuggingFace} \\
+GYAFC & Formality (informal$\to$formal) & 52K & 2.9K & Manual download \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Baselines}
+
+We compare LSME against six baselines spanning three categories: (1)~unconditional discrete DLMs that generate text without attribute control (MDLM, ReMDM), (2)~continuous latent-space methods that operate on VAE latent vectors (LatentOps, PLANNER, LD4LG), and (3)~edit-based diffusion models that directly modify token sequences (DiffusER). This selection covers the full spectrum of approaches in the literature, from pure discrete diffusion to continuous latent manipulation.
+
+Each baseline is run on the same 500 test inputs and evaluated with our unified DLM-Eval Suite. For baselines that do not natively support editing (MDLM, ReMDM), we report unconditional generation metrics where applicable and mark editing-specific metrics (BLEU, BERTScore) as not applicable.
+
+\begin{table}[h]
+\centering
+\caption{Baseline methods. All baselines have publicly available code.}
+\label{tab:baselines}
+\begin{tabular}{llll}
+\toprule
+\textbf{Method} & \textbf{Venue} & \textbf{Key Idea} & \textbf{Code} \\
+\midrule
+MDLM & ICML 2024 & Masked diffusion LM (unconditional) & \href{https://github.com/kuleshov-group/mdlm}{kuleshov-group/mdlm} \\
+ReMDM & NeurIPS 2024 & Remasking for diverse generation & \href{https://github.com/kuleshov-group/remdm}{kuleshov-group/remdm} \\
+LatentOps & NeurIPS 2022 & ODE-based latent style transfer & \href{https://github.com/guangyliu/LatentOps}{guangyliu/LatentOps} \\
+DiffusER & EMNLP 2022 & Edit-based text diffusion & \href{https://github.com/machelreid/diffuser}{machelreid/diffuser} \\
+PLANNER & NeurIPS 2023 & Paragraph-level latent diffusion & \href{https://github.com/apple/ml-planner}{apple/ml-planner} \\
+LD4LG & ICML 2024 & Continuous latent DLM & \href{https://github.com/justinlovelace/latent-diffusion-for-language}{justinlovelace/ld4lg} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Evaluation Metrics}
+
+We propose the \textbf{DLM-Eval Suite}, a 6-pillar evaluation framework designed specifically for discrete language model editing. Unlike prior work that reports only attribute accuracy and perplexity, our suite comprehensively measures fluency, controllability, content preservation, latent-space structure, output diversity, and computational efficiency. Table~\ref{tab:metrics} lists all metrics.
+
+Two metrics are novel contributions of this work:
+\begin{itemize}
+  \item \textbf{Semantic Smoothness Score (SSS):} Given a SLERP interpolation path of $N$ points between two attribute centroids, we decode text at each point and compute the mean cosine similarity (using sentence embeddings from all-MiniLM-L6-v2) between adjacent texts: $\text{SSS} = \frac{1}{N-1} \sum_{i=1}^{N-1} \text{sim}(\text{text}_i, \text{text}_{i+1})$. SSS $= 1.0$ indicates a perfectly smooth semantic trajectory; low SSS indicates abrupt, discontinuous changes.
+  \item \textbf{Monotonic Transition Score (MTS):} Along the same interpolation path, we measure the fraction of steps where the target-attribute classifier confidence increases monotonically: $\text{MTS} = \frac{1}{N-1} \sum_{i=1}^{N-1} \mathbf{1}[c(\text{text}_{i+1}) \ge c(\text{text}_i)]$. MTS $= 1.0$ means the transition from source to target attribute is perfectly monotonic; MTS $= 0.5$ is random.
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\caption{DLM-Eval Suite: 6-pillar evaluation metrics.}
+\label{tab:metrics}
+\begin{tabular}{llll}
+\toprule
+\textbf{Pillar} & \textbf{Metric} & \textbf{Formula / Tool} & \textbf{$\uparrow$/$\downarrow$} \\
+\midrule
+\multirow{2}{*}{1. Fluency} & PPL & $\exp(\text{NLL})$ via GPT-2 & $\downarrow$ \\
+& Grammar errors & LanguageTool & $\downarrow$ \\
+\midrule
+2. Controllability & Attr-Acc & Classifier accuracy & $\uparrow$ \\
+\midrule
+\multirow{4}{*}{3. Edit Quality} & BLEU & n-gram overlap (source $\to$ edited) & $\uparrow$ \\
+& ROUGE-L & LCS F1 & $\uparrow$ \\
+& BERTScore & Cosine sim of BERT embeddings & $\uparrow$ \\
+& Edit-Dist & Levenshtein / length & $\downarrow$ \\
+\midrule
+\multirow{2}{*}{4. Latent Geometry} & SSS & Mean cosine-sim of adjacent interp.\ texts & $\uparrow$ \\
+& MTS & Fraction of monotonic classifier steps & $\uparrow$ \\
+\midrule
+\multirow{2}{*}{5. Diversity} & Self-BLEU & Mean BLEU between output pairs & $\downarrow$ \\
+& Distinct-1/2/3 & Unique n-grams / total n-grams & $\uparrow$ \\
+\midrule
+6. Efficiency & TPS & Tokens per second & $\uparrow$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Hardware}
+\label{sec:hardware}
+
+All experiments are conducted on the same machine to ensure fair timing comparisons. Table~\ref{tab:hardware} lists the hardware configuration.
+
+\begin{table}[h]
+\centering
+\caption{Hardware configuration.}
+\label{tab:hardware}
+\begin{tabular}{ll}
+\toprule
+\textbf{Component} & \textbf{Specification} \\
+\midrule
+GPU & \tbd{NVIDIA A100 80GB} \\
+CPU & \tbd{AMD EPYC 7763} \\
+RAM & \tbd{256GB} \\
+Storage & \tbd{2TB NVMe SSD} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Hyperparameters}
+\label{sec:hyperparams}
+% ============================================================
+
+\subsection{Model Hyperparameters}
+
+The MMDiT backbone is a 12-block transformer with joint attention between text tokens and a continuous latent vector. Both the text hidden dimension and latent dimension are 768, matching the BERT-base embedding size. The model uses the MDLM masked diffusion process with $t_\epsilon = 10^{-4}$. Table~\ref{tab:model_hparams} lists the full architecture.
+
+\begin{table}[h]
+\centering
+\caption{MMDiT model architecture hyperparameters (from training).}
+\label{tab:model_hparams}
+\begin{tabular}{llr}
+\toprule
+\textbf{Module} & \textbf{Parameter} & \textbf{Value} \\
+\midrule
+\multirow{4}{*}{MMDiT Backbone} & Hidden dimension & 768 \\
+& Attention heads & 12 \\
+& Transformer blocks & 12 \\
+& Condition dimension & 768 \\
+\midrule
+\multirow{2}{*}{Latent Pathway} & Latent dim (input) & 768 \\
+& Latent hidden size & 768 \\
+\midrule
+\multirow{2}{*}{Diffusion} & Process & MDLM (masked) \\
+& $t_\epsilon$ & $10^{-4}$ \\
+\midrule
+Text & Max sequence length & 512 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{LSME Editing Hyperparameters}
+
+LSME has five key hyperparameters that control the editing behavior. The \textbf{mask ratio} $r$ determines how much of the source text is masked for re-generation: $r = 0$ means no change, $r = 1$ means full regeneration. The \textbf{mask mode} selects which tokens to mask: \textit{random} (uniform Bernoulli), \textit{entropy} (mask high-entropy tokens first), or \textit{suffix} (mask the last $r \cdot L$ tokens). The \textbf{diffusion steps} control the number of reverse-diffusion iterations from the entry timestep $\sigma(r)$ to $t = 0$. The \textbf{temperature} scales the logits before sampling, trading quality for diversity. The \textbf{latent source} determines how the target latent $z_\text{target}$ is obtained: attribute centroid (default), nearest neighbor, or directional edit.
+
+We set defaults based on preliminary experiments (Table~\ref{tab:lsme_hparams}) and systematically ablate each in Section~\ref{sec:ablation}.
+
+\begin{table}[h]
+\centering
+\caption{LSME editing hyperparameters. Each is ablated in Section~\ref{sec:ablation}.}
+\label{tab:lsme_hparams}
+\begin{tabular}{lrl}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{Ablation range} \\
+\midrule
+Mask ratio ($r$) & 0.3 & $\{0.1, 0.3, 0.5, 0.7, 0.9\}$ \\
+Reverse diffusion steps & 100 & $\{10, 50, 100, 500\}$ \\
+Sampling temperature ($T$) & 1.0 & $\{0.5, 0.8, 1.0, 1.2\}$ \\
+Mask mode & random & $\{$random, entropy, suffix$\}$ \\
+Latent source & centroid & $\{$zeros, random, centroid, NN, directional$\}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Main Results (RQ1, RQ4)}
+\label{sec:results}
+% ============================================================
+
+We evaluate LSME on three attribute-transfer tasks to answer RQ1 (does LSME outperform baselines?) and RQ4 (does it generalize across attributes?). For each task, we run LSME at multiple mask ratios to show the accuracy--preservation tradeoff.
+
+\subsection{Yelp Sentiment Transfer (\texorpdfstring{negative $\to$ positive}{negative to positive})}
+
+The primary benchmark is binary sentiment transfer on Yelp. We take 500 negative reviews from the test set and edit them toward positive sentiment using the positive-class latent centroid. Table~\ref{tab:yelp_results} compares LSME at three mask ratios against all six baselines.
+
+We expect LSME to achieve higher attribute accuracy than unconditional methods (MDLM, ReMDM) since it directly steers generation toward the target sentiment via the latent. Compared to continuous latent methods (LatentOps, LD4LG), we expect competitive accuracy with better content preservation (higher BLEU) because LSME operates directly on discrete tokens rather than requiring encode--decode through a VAE bottleneck. The mask ratio $r$ controls the tradeoff: lower $r$ preserves more content but changes less; higher $r$ achieves stronger attribute transfer but diverges further from the source.
+
+\begin{table}[h]
+\centering
+\caption{Sentiment transfer on Yelp (500 negative $\to$ positive). \best{Bold} = best. \tbd{Red} = to be filled. Experiments: EXP-B01--B06 (baselines), EXP-M01--M03 (LSME).}
+\label{tab:yelp_results}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Method} & \textbf{Attr-Acc $\uparrow$} & \textbf{PPL $\downarrow$} & \textbf{BLEU $\uparrow$} & \textbf{BERTScore $\uparrow$} & \textbf{Distinct-2 $\uparrow$} \\
+\midrule
+MDLM (uncond.) & --- & \tbd{---} & --- & --- & \tbd{---} \\
+ReMDM & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+LatentOps & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+DiffusER & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+PLANNER & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+LD4LG & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\midrule
+\textbf{LSME} ($r$=0.3) & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\textbf{LSME} ($r$=0.5) & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\textbf{LSME} ($r$=0.7) & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Amazon Topic Transfer (\texorpdfstring{electronics $\to$ books}{electronics to books})}
+
+To test generalization beyond sentiment (RQ4), we evaluate on Amazon Reviews domain transfer. We edit 500 electronics reviews toward the books domain using the books-domain latent centroid. This task is qualitatively different from sentiment: rather than flipping polarity, the model must shift domain-specific vocabulary (e.g., ``battery life'' $\to$ ``plot development'') while preserving the review's general structure and opinion.
+
+We compare against LatentOps and DiffusER, which are the two baselines with published results on domain transfer tasks.
+
+\begin{table}[h]
+\centering
+\caption{Topic transfer on Amazon Reviews (electronics $\to$ books). Experiments: EXP-B07--B08, EXP-M04--M05.}
+\label{tab:amazon_results}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Method} & \textbf{Attr-Acc $\uparrow$} & \textbf{PPL $\downarrow$} & \textbf{BLEU $\uparrow$} & \textbf{BERTScore $\uparrow$} & \textbf{Edit-Dist $\downarrow$} \\
+\midrule
+LatentOps & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+DiffusER & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\midrule
+\textbf{LSME} ($r$=0.3) & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\textbf{LSME} ($r$=0.5) & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{GYAFC Formality Transfer (\texorpdfstring{informal $\to$ formal}{informal to formal})}
+
+The third benchmark tests formality transfer on GYAFC. This task is the most challenging because formality changes require subtle rewording (e.g., ``gonna'' $\to$ ``going to'', ``lol'' $\to$ removing the token) rather than large-scale vocabulary shifts. GYAFC also provides human-written formal references, enabling reference-based BLEU evaluation.
+
+\begin{table}[h]
+\centering
+\caption{Formality transfer on GYAFC (informal $\to$ formal). Experiments: EXP-B09--B10, EXP-M06--M07.}
+\label{tab:gyafc_results}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Method} & \textbf{Attr-Acc $\uparrow$} & \textbf{PPL $\downarrow$} & \textbf{BLEU $\uparrow$} & \textbf{BERTScore $\uparrow$} & \textbf{Edit-Dist $\downarrow$} \\
+\midrule
+LatentOps & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+DiffusER & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\midrule
+\textbf{LSME} ($r$=0.3) & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\textbf{LSME} ($r$=0.5) & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Ablation Study (RQ2)}
+\label{sec:ablation}
+% ============================================================
+
+We perform five ablation studies on the Yelp sentiment transfer task to isolate the contribution of each LSME design choice. All ablations fix the non-ablated parameters to defaults (Table~\ref{tab:lsme_hparams}) unless stated otherwise.
+
+\subsection{Mask Ratio Ablation}
+
+The mask ratio $r$ is the primary control knob for LSME's accuracy--preservation tradeoff. At $r = 0.1$, only 10\% of tokens are resampled, maximizing content preservation but limiting the model's ability to change sentiment. At $r = 0.9$, nearly the entire sequence is regenerated, giving the model maximum freedom but potentially destroying source content. We sweep $r \in \{0.1, 0.3, 0.5, 0.7, 0.9\}$ and expect a monotonic increase in Attr-Acc and decrease in BLEU as $r$ increases.
+
+\begin{table}[h]
+\centering
+\caption{Mask ratio ablation on Yelp sentiment transfer. Higher $r$ $\to$ more change, less preservation. Experiments: EXP-A01--A05.}
+\label{tab:ablation_mask_ratio}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Mask Ratio} & \textbf{Attr-Acc $\uparrow$} & \textbf{PPL $\downarrow$} & \textbf{BLEU $\uparrow$} & \textbf{BERTScore $\uparrow$} \\
+\midrule
+$r = 0.1$ & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+$r = 0.3$ & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+$r = 0.5$ & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+$r = 0.7$ & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+$r = 0.9$ & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Mask Mode Ablation}
+
+LSME supports three masking strategies: \textit{random} (uniform Bernoulli sampling), \textit{entropy} (preferentially mask tokens where the model is most uncertain, computed from the forward-pass logits), and \textit{suffix} (mask the last $r \cdot L$ tokens, leaving the prefix intact). We fix $r = 0.3$ and compare the three modes. We hypothesize that entropy-based masking will achieve the best accuracy--preservation tradeoff because it targets the tokens most amenable to change.
+
+\begin{table}[h]
+\centering
+\caption{Mask mode ablation on Yelp ($r=0.3$, 100 steps). Experiments: EXP-A06--A08.}
+\label{tab:ablation_mask_mode}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Mask Mode} & \textbf{Attr-Acc $\uparrow$} & \textbf{PPL $\downarrow$} & \textbf{BLEU $\uparrow$} & \textbf{BERTScore $\uparrow$} \\
+\midrule
+Random & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+Entropy & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+Suffix & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Diffusion Steps Ablation}
+
+The number of reverse-diffusion steps controls the quality--speed tradeoff. More steps give the model more iterations to refine the output but cost proportionally more compute. We test $\{10, 50, 100, 500\}$ steps with $r = 0.3$. We include TPS (tokens per second) to quantify the speed cost. We expect diminishing returns beyond 100 steps.
+
+\begin{table}[h]
+\centering
+\caption{Diffusion steps ablation on Yelp ($r=0.3$, random mask). Experiments: EXP-A09--A12.}
+\label{tab:ablation_steps}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Steps} & \textbf{Attr-Acc $\uparrow$} & \textbf{PPL $\downarrow$} & \textbf{BLEU $\uparrow$} & \textbf{TPS $\uparrow$} \\
+\midrule
+10 & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+50 & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+100 & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+500 & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Temperature Ablation}
+
+Sampling temperature $T$ scales the logits before the categorical sampling step. Lower $T$ sharpens the distribution (more deterministic, lower diversity), while higher $T$ flattens it (more diverse, potentially less coherent). We test $T \in \{0.5, 0.8, 1.0, 1.2\}$ and report Distinct-2 and Self-BLEU alongside accuracy and PPL to capture the diversity dimension.
+
+\begin{table}[h]
+\centering
+\caption{Temperature ablation on Yelp ($r=0.3$, 100 steps). Experiments: EXP-A13--A16.}
+\label{tab:ablation_temperature}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Temperature} & \textbf{Attr-Acc $\uparrow$} & \textbf{PPL $\downarrow$} & \textbf{Distinct-2 $\uparrow$} & \textbf{Self-BLEU $\downarrow$} \\
+\midrule
+$T = 0.5$ & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+$T = 0.8$ & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+$T = 1.0$ & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+$T = 1.2$ & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Latent Source Ablation}
+
+The target latent $z_\text{target}$ conditions the MMDiT's joint attention blocks during reverse diffusion. We compare five latent sources: (1)~\textit{zeros} (no latent conditioning---the model runs as a standard MDLM), (2)~\textit{random} (a random Gaussian vector---tests whether any signal helps), (3)~\textit{centroid} (mean latent of target-class training samples---the default), (4)~\textit{nearest neighbor} (the single nearest target-class latent to the source's latent), and (5)~\textit{directional} (source latent $+$ $\alpha \cdot (z_\text{target\_centroid} - z_\text{source\_centroid})$ with $\alpha = 1.0$).
+
+If LSME's latent steering is effective, we expect a large gap between \textit{zeros}/\textit{random} and the informed sources (\textit{centroid}, \textit{NN}, \textit{directional}).
+
+\begin{table}[h]
+\centering
+\caption{Latent source ablation on Yelp ($r=0.3$, 100 steps). Experiments: EXP-A17--A21.}
+\label{tab:ablation_latent_source}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Latent Source} & \textbf{Attr-Acc $\uparrow$} & \textbf{PPL $\downarrow$} & \textbf{BLEU $\uparrow$} & \textbf{BERTScore $\uparrow$} \\
+\midrule
+No latent (zeros) & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+Random latent & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+Centroid & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+Nearest neighbor & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+Directional ($\alpha=1.0$) & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Latent Geometry Analysis (RQ3)}
+\label{sec:geometry}
+% ============================================================
+
+A key claim of this work is that the MMDiT's joint attention architecture produces a latent space with smooth, structured attribute interpolation. We test this claim by computing our novel SSS and MTS metrics along SLERP interpolation paths between attribute centroids.
+
+For each attribute pair (negative$\to$positive, electronics$\to$books, informal$\to$formal), we select 10 random source--target latent pairs and construct 10-point SLERP paths between them. At each interpolation point, we decode 5 text samples and compute:
+\begin{itemize}
+  \item \textbf{SSS:} Mean cosine similarity between adjacent decoded texts (using sentence embeddings). High SSS indicates the latent space is semantically smooth---small latent perturbations cause small text changes.
+  \item \textbf{MTS:} Fraction of steps where the target-attribute classifier confidence increases. High MTS indicates the latent space has a structured attribute gradient---walking from source to target in latent space corresponds to a monotonic change in attribute probability.
+  \item \textbf{Interpolation PPL:} Mean perplexity of decoded texts at all interpolation points. Low interpolation PPL indicates the latent space is ``on-manifold''---interpolated latents decode to fluent text, not gibberish.
+\end{itemize}
+
+We also report cluster-level metrics: \textbf{silhouette score} (how well-separated are the attribute clusters?) and \textbf{variance ratio} (what fraction of latent variance is explained by attribute labels?).
+
+\begin{table}[h]
+\centering
+\caption{Latent geometry metrics. SSS and MTS measured on 10-point SLERP paths (10 pairs, 5 samples/point). Experiments: EXP-G01--G04.}
+\label{tab:geometry}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Interpolation Path} & \textbf{SSS $\uparrow$} & \textbf{MTS $\uparrow$} & \textbf{Interp.\ PPL $\downarrow$} \\
+\midrule
+Negative $\to$ Positive (Yelp) & \tbd{---} & \tbd{---} & \tbd{---} \\
+Electronics $\to$ Books (Amazon) & \tbd{---} & \tbd{---} & \tbd{---} \\
+Informal $\to$ Formal (GYAFC) & \tbd{---} & \tbd{---} & \tbd{---} \\
+\midrule
+\multicolumn{4}{l}{\textit{Cluster separation (Yelp sentiment)}} \\
+Silhouette score & \multicolumn{3}{c}{\tbd{---}} \\
+Variance ratio & \multicolumn{3}{c}{\tbd{---}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Efficiency Analysis (RQ5)}
+\label{sec:efficiency}
+% ============================================================
+
+We compare the computational cost of LSME against baselines to address whether the latent-steering mechanism introduces significant overhead. The key quantity is the \textbf{number of function evaluations (NFE)}---the number of forward passes through the model. LSME's NFE equals the number of reverse-diffusion steps, which is lower than full-sequence generation (MDLM uses 128 steps for 512 tokens) because LSME only denoises from the entry timestep $\sigma(r)$, not from $t = 1$.
+
+We also report parameter count, tokens per second (TPS), and peak GPU memory. All measurements use batch size 32 with 512-token sequences on the Yelp task.
+
+\begin{table}[h]
+\centering
+\caption{Computational cost comparison (Yelp, batch size 32, 512 tokens). Experiments: EXP-E01--E03.}
+\label{tab:efficiency}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Method} & \textbf{Params (M)} & \textbf{NFE} & \textbf{TPS $\uparrow$} & \textbf{GPU Mem (GB)} \\
+\midrule
+MDLM & \tbd{---} & 128 & \tbd{---} & \tbd{---} \\
+ReMDM & \tbd{---} & 128+ & \tbd{---} & \tbd{---} \\
+LatentOps & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+DiffusER & \tbd{---} & \tbd{---} & \tbd{---} & \tbd{---} \\
+\midrule
+\textbf{LSME} (100 steps) & \tbd{---} & 100 & \tbd{---} & \tbd{---} \\
+\textbf{LSME} (50 steps) & \tbd{---} & 50 & \tbd{---} & \tbd{---} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Experiment Index}
+\label{sec:index}
+% ============================================================
+
+Table~\ref{tab:exp_index} provides a complete mapping from experiment IDs to result tables, enabling traceability from raw results to reported numbers.
+
+\begin{longtable}{llll}
+\caption{Complete experiment index. 48 experiments, 34 new runs + 14 reused.}
+\label{tab:exp_index} \\
+\toprule
+\textbf{ID} & \textbf{Category} & \textbf{Description} & \textbf{Result Table} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{ID} & \textbf{Category} & \textbf{Description} & \textbf{Result Table} \\
+\midrule
+\endhead
+EXP-B01--B06 & Baseline & 6 baselines on Yelp & Table~\ref{tab:yelp_results} \\
+EXP-B07--B08 & Baseline & 2 baselines on Amazon & Table~\ref{tab:amazon_results} \\
+EXP-B09--B10 & Baseline & 2 baselines on GYAFC & Table~\ref{tab:gyafc_results} \\
+\midrule
+EXP-M01 & Main & LSME $r$=0.3 Yelp & Table~\ref{tab:yelp_results} \\
+EXP-M02 & Main & LSME $r$=0.5 Yelp & Table~\ref{tab:yelp_results} \\
+EXP-M03 & Main & LSME $r$=0.7 Yelp & Table~\ref{tab:yelp_results} \\
+EXP-M04 & Main & LSME $r$=0.3 Amazon & Table~\ref{tab:amazon_results} \\
+EXP-M05 & Main & LSME $r$=0.5 Amazon & Table~\ref{tab:amazon_results} \\
+EXP-M06 & Main & LSME $r$=0.3 GYAFC & Table~\ref{tab:gyafc_results} \\
+EXP-M07 & Main & LSME $r$=0.5 GYAFC & Table~\ref{tab:gyafc_results} \\
+\midrule
+EXP-A01--A05 & Ablation & Mask ratio sweep & Table~\ref{tab:ablation_mask_ratio} \\
+EXP-A06--A08 & Ablation & Mask mode comparison & Table~\ref{tab:ablation_mask_mode} \\
+EXP-A09--A12 & Ablation & Diffusion steps sweep & Table~\ref{tab:ablation_steps} \\
+EXP-A13--A16 & Ablation & Temperature sweep & Table~\ref{tab:ablation_temperature} \\
+EXP-A17--A21 & Ablation & Latent source comparison & Table~\ref{tab:ablation_latent_source} \\
+\midrule
+EXP-G01--G03 & Geometry & SSS/MTS interpolation & Table~\ref{tab:geometry} \\
+EXP-G04 & Geometry & Cluster separation & Table~\ref{tab:geometry} \\
+\midrule
+EXP-E01--E02 & Efficiency & LSME profiling & Table~\ref{tab:efficiency} \\
+EXP-E03 & Efficiency & Baseline profiling & Table~\ref{tab:efficiency} \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Run Commands Reference}
+\label{sec:commands}
+% ============================================================
+
+All experiments can be reproduced with the following commands. Set environment variables first:
+
+\begin{verbatim}
+export CKPT=checkpoints/mmdit_latent
+export LATENT_DIR=data/latents
+export META=data/latents/metadata.json
+export YELP_INPUT=data/yelp_negatives.txt
+export AMAZON_INPUT=data/amazon_electronics.txt
+export GYAFC_INPUT=data/gyafc_informal.txt
+\end{verbatim}
+
+\subsection{LSME Editing}
+
+\begin{verbatim}
+# Main run (Yelp, r=0.3)
+python -m lsme.scripts.run_lsme \
+    --checkpoint_path $CKPT \
+    --latent_dir $LATENT_DIR --metadata_file $META \
+    --attribute sentiment --target_value positive \
+    --mask_ratio 0.3 --steps 100 --temperature 1.0 \
+    --mask_mode random \
+    --input_file $YELP_INPUT \
+    --output_file results/EXP-M01/output.json \
+    --batch_size 32 --device cuda
+\end{verbatim}
+
+\subsection{Evaluation}
+
+\begin{verbatim}
+# Evaluate LSME outputs
+python -m lsme.scripts.run_eval \
+    --results_file results/EXP-M01/output.json \
+    --output_dir results/EXP-M01/eval/ --device cuda
+
+# Evaluate baselines (batch)
+python -m lsme.scripts.run_baselines \
+    --baseline_results_dir results/baselines/yelp/ \
+    --output_dir results/EXP-B01/eval/ \
+    --target_attribute POSITIVE --device cuda
+\end{verbatim}
+
+\subsection{Latent Geometry}
+
+\begin{verbatim}
+python -m lsme.scripts.run_geometry \
+    --checkpoint_path $CKPT \
+    --latent_dir $LATENT_DIR --metadata_file $META \
+    --attribute sentiment \
+    --source_value negative --target_value positive \
+    --n_pairs 10 --n_points 10 --n_samples 5 \
+    --output_dir results/EXP-G01/ --device cuda
+\end{verbatim}
+
+\subsection{Ablation Sweep}
+
+\begin{verbatim}
+# Mask ratio sweep
+for r in 0.1 0.3 0.5 0.7 0.9; do
+    python -m lsme.scripts.run_lsme \
+        --checkpoint_path $CKPT \
+        --latent_dir $LATENT_DIR --metadata_file $META \
+        --attribute sentiment --target_value positive \
+        --mask_ratio $r --steps 100 --temperature 1.0 \
+        --mask_mode random \
+        --input_file $YELP_INPUT \
+        --output_file results/ablation_mr/r${r}/output.json \
+        --batch_size 32 --device cuda
+done
+\end{verbatim}
+
+\end{document}

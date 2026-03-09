@@ -1,0 +1,13 @@
+Academic pipeline figure for a NeurIPS paper on LSME (Latent-Steered Masked Editing), a method that brings SDEdit-style controllable editing to discrete masked diffusion language models.
+
+LSME works in three steps. Given source text (e.g., "the food was bad") and a desired target attribute (e.g., positive sentiment):
+
+Step 1 — Partial Masking: A fraction r of source tokens are randomly replaced with [MASK] tokens. Unmasked tokens (e.g., "the", "food") are preserved exactly throughout the process via a copy flag mechanism. This creates a partially corrupted sequence like "the food [M] [M]".
+
+Step 2 — Latent Replacement: A target latent vector z_target is computed as the centroid of training latents with the desired attribute. This clean latent (t_z = 0) replaces the source latent, acting as a conditioning signal that steers generation toward the target attribute.
+
+Step 3 — Joint Reverse Diffusion via MMDiT: The partially masked text and the target latent are fed into a Multimodal Diffusion Transformer (MMDiT), which performs joint QKV attention between the discrete text stream and the continuous latent stream. The model denoises only the masked positions from t_entry down to t = 0, while the copy flag ensures unmasked positions remain unchanged. The result is edited text (e.g., "the food is great") where content-bearing tokens are preserved and attribute-relevant tokens are regenerated under latent guidance.
+
+The figure should clearly show the two parallel streams inside the MMDiT (text tokens and continuous latent), the cross-attention between them, and the flow from source text through masking, joint denoising, and copy-flag filtering to the final edited output. The target attribute encoding path should be shown as a separate pathway feeding into the latent stream.
+
+Style: Clean, flat, professional academic figure suitable for a top-tier ML venue. White background, no decorative elements. Ensure generous margins so nothing is cropped at the edges. The entire figure must fit within the frame with all labels fully visible.

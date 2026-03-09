@@ -1,0 +1,44 @@
+# LSME Amazon Topic Transfer Config
+# Extends: mmdit_latent/configs/mdlm_mmdit_latent.yaml (base model config)
+
+defaults:
+  - _self_
+
+# Checkpoint (trained MMDiT model)
+checkpoint_path: ???  # Required: path to trained checkpoint
+
+# LSME editing parameters
+lsme:
+  mask_ratio: 0.3
+  steps: 100
+  temperature: 1.0
+  mask_mode: "random"
+  max_length: 512
+  batch_size: 32
+
+# Attribute encoder
+attribute:
+  name: "topic"
+  source_value: "electronics"
+  target_value: "books"
+  latent_dir: ???
+  metadata_file: ???
+
+# Dataset
+data:
+  dataset_name: "amazon_polarity"
+  split: "test"
+  max_samples: 500
+  source_domain: "electronics"
+
+# Evaluation
+eval:
+  fluency_model: "gpt2"
+  device: "cuda"
+
+# Ablation sweep
+sweep:
+  mask_ratios: [0.1, 0.3, 0.5, 0.7]
+
+# Output
+output_dir: "results/lsme_amazon/"

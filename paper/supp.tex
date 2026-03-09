@@ -1,0 +1,366 @@
+\documentclass{article}
+
+\usepackage[preprint]{neurips_2025}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\newtheorem{proposition}{Proposition}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{subcaption}
+\usepackage{listings}
+
+% Custom commands
+\newcommand{\tbd}[1]{\textcolor{red}{#1}}
+\newcommand{\best}[1]{\textbf{#1}}
+\newcommand{\gc}{\checkmark}
+\newcommand{\rx}{\textcolor{red}{$\times$}}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  language=Python,
+  keywordstyle=\color{blue},
+  commentstyle=\color{green!50!black},
+  stringstyle=\color{orange}
+}
+
+\title{Supplementary Material:\\LSME: Latent-Steered Masked Editing\\for Discrete Diffusion Language Models}
+
+\author{Anonymous Author(s)}
+
+\begin{document}
+
+\maketitle
+
+\setcounter{section}{0}
+\renewcommand{\thesection}{\Alph{section}}
+
+% ============================================================
+\section{Extended Method Details}
+\label{app:method_details}
+% ============================================================
+% SOURCE: specs.md -- full module specifications
+
+\subsection{LSME Sampler Pseudocode}
+% SOURCE: specs.md Module 1 algorithm
+
+Algorithm~\ref{alg:lsme_detailed} provides the full LSME sampling procedure with all implementation details, including entropy-based and suffix masking modes.
+
+\begin{algorithm}[t]
+\caption{LSME: Full Implementation with Mask Modes}
+\label{alg:lsme_detailed}
+\begin{algorithmic}[1]
+\REQUIRE Model $f_\theta$, source tokens $\mathbf{x}_\text{src}$ (B, L), target latent $\mathbf{z}_\text{target}$ (B, D), mask ratio $r$, steps $S$, temperature $T$, mask mode $\in$ \{random, entropy, suffix\}
+\STATE \textbf{// Step 1: Determine mask positions}
+\IF{mask mode = random}
+    \STATE $\mathbf{m} \sim \text{Bernoulli}(r)^{B \times L}$
+\ELSIF{mask mode = entropy}
+    \STATE $\text{logits}, \_ \leftarrow f_\theta(\mathbf{x}_\text{src}, \mathbf{z}_\text{target}, t{=}0.5, t_z{=}0)$
+    \STATE $H_i \leftarrow -\sum_v p_v \log p_v$ for each position $i$ \COMMENT{entropy}
+    \STATE $\mathbf{m} \leftarrow \text{top-}k(H, k{=}\lfloor r \cdot L \rfloor)$ \COMMENT{mask highest entropy positions}
+\ELSIF{mask mode = suffix}
+    \STATE $\mathbf{m}_i \leftarrow \mathbf{1}[i > (1-r) \cdot L]$ \COMMENT{mask last $\lfloor r \cdot L \rfloor$ positions}
+\ENDIF
+\STATE \textbf{// Step 2: Apply mask}
+\STATE $\mathbf{x}_t \leftarrow \mathbf{x}_\text{src}$; \quad $\mathbf{x}_t[\mathbf{m}] \leftarrow [\text{MASK}]$
+\STATE $t_\text{entry} \leftarrow r$
+\STATE \textbf{// Step 3: Set target latent (clean)}
+\STATE $\mathbf{z} \leftarrow \mathbf{z}_\text{target}$, \quad $t_z \leftarrow 0$
+\STATE \textbf{// Step 4: Partial reverse diffusion}
+\STATE $\{t_s\}_{s=0}^{S} \leftarrow \text{linspace}(\epsilon, t_\text{entry}, S+1)$
+\FOR{$s = S-1, \ldots, 0$}
+    \STATE $\text{logits}, \_ \leftarrow f_\theta(\mathbf{x}_t, \mathbf{z}, t_s, t_z)$
+    \STATE $\text{logits}[\text{MASK}] \leftarrow -\infty$ \COMMENT{prevent sampling MASK token}
+    \STATE $\text{logits} \leftarrow \text{logits} / T$ \COMMENT{temperature scaling}
+    \STATE \textbf{// MDLM posterior}
+    \STATE $\sigma_s \leftarrow -\log(1 - (1-\epsilon) \cdot t_s)$
+    \STATE $\sigma_{s-1} \leftarrow -\log(1 - (1-\epsilon) \cdot t_{s-1})$
+    \STATE $m_s \leftarrow 1 - e^{-\sigma_s}$; \quad $m_{s-1} \leftarrow 1 - e^{-\sigma_{s-1}}$
+    \STATE $\text{probs} \leftarrow \text{softmax}(\text{logits}) \cdot (m_s - m_{s-1})$
+    \STATE $\text{probs}[\text{MASK}] \leftarrow m_{s-1}$
+    \STATE $\text{probs} \leftarrow \text{probs} / m_s$
+    \STATE $\mathbf{x}_{s-1} \sim \text{Categorical}(\text{probs})$
+    \STATE \textbf{// Copy flag: preserve unmasked positions}
+    \STATE $\text{copy} \leftarrow (\mathbf{x}_t \neq [\text{MASK}])$
+    \STATE $\mathbf{x}_t \leftarrow \text{copy} \cdot \mathbf{x}_t + (\neg\text{copy}) \cdot \mathbf{x}_{s-1}$
+\ENDFOR
+\RETURN $\mathbf{x}_t$, $\mathbf{m}$ \COMMENT{edited tokens and edit mask}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Attribute Latent Encoder}
+% SOURCE: specs.md Module 2
+
+The attribute latent encoder computes target latent vectors from pre-computed training latents:
+
+\begin{lstlisting}
+class AttributeLatentEncoder:
+    def __init__(self, latent_dir, metadata_file):
+        # Load pre-computed latent vectors and metadata
+        self.latents = load_latents(latent_dir)
+        self.metadata = load_json(metadata_file)
+
+    def compute_attribute_centroids(self, attribute_name):
+        centroids = {}
+        for value in unique_values(self.metadata, attribute_name):
+            indices = [i for i, m in enumerate(self.metadata)
+                       if m[attribute_name] == value]
+            centroids[value] = self.latents[indices].mean(0)
+        return centroids
+
+    def get_target_latent(self, attribute_name, target_value):
+        centroids = self.compute_attribute_centroids(attribute_name)
+        return centroids[target_value]
+
+    def interpolate(self, z_source, z_target, alpha):
+        # Spherical linear interpolation (SLERP)
+        omega = arccos(cosine_sim(z_source, z_target))
+        return (sin((1-alpha)*omega)/sin(omega)) * z_source \
+             + (sin(alpha*omega)/sin(omega)) * z_target
+\end{lstlisting}
+
+\subsection{MMDiT Joint Attention Mechanism}
+% SOURCE: specs.md + contribution.tex
+
+The MMDiT block processes text and latent modalities through shared attention with modality-specific projections:
+
+\begin{enumerate}
+    \item \textbf{Input projection:} Text tokens are embedded via token embedding + positional encoding. The continuous latent is projected via an MLP.
+    \item \textbf{Joint QKV attention:} Both modalities are concatenated along the sequence dimension for shared attention: $\mathbf{Q} = [\mathbf{Q}_\text{text}; \mathbf{Q}_\text{latent}]$, $\mathbf{K} = [\mathbf{K}_\text{text}; \mathbf{K}_\text{latent}]$, $\mathbf{V} = [\mathbf{V}_\text{text}; \mathbf{V}_\text{latent}]$.
+    \item \textbf{Modality-specific FFN:} After attention, the sequence is split and each modality passes through its own feed-forward network.
+    \item \textbf{Output:} Text logits over vocabulary $V$ and latent noise prediction $\hat{\boldsymbol{\epsilon}}$.
+\end{enumerate}
+
+% ============================================================
+\section{Extended Experimental Details}
+\label{app:exp_details}
+% ============================================================
+% SOURCE: experiments.tex
+
+\subsection{Hardware Configuration}
+% SOURCE: experiments.tex Table 5
+
+\begin{table}[h]
+\centering
+\caption{Hardware configuration.}
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Component} & \textbf{Specification} \\
+\midrule
+GPU & \tbd{NVIDIA A100 80GB} \\
+CPU & \tbd{AMD EPYC 7763} \\
+RAM & \tbd{256GB} \\
+Storage & \tbd{2TB NVMe SSD} \\
+\bottomrule
+\end{tabular}
+\end{table}
+% TODO: Confirm hardware specifications.
+
+\subsection{Baseline Implementation Details}
+% SOURCE: experiments.tex Table 3
+
+\begin{table}[h]
+\centering
+\caption{Baseline method details.}
+\small
+\begin{tabular}{llll}
+\toprule
+\textbf{Method} & \textbf{Venue} & \textbf{Key Idea} & \textbf{Code Repository} \\
+\midrule
+MDLM & NeurIPS 2024 & Masked diffusion LM & kuleshov-group/mdlm \\
+ReMDM & arXiv 2025 & Remasking for diversity & kuleshov-group/remdm \\
+LatentOps & ACL 2023 & ODE latent style transfer & guangyliu/LatentOps \\
+DiffusER & ICLR 2023 & Edit-based diffusion & machelreid/diffuser \\
+PLANNER & NeurIPS 2023 & Latent paragraph diffusion & apple/ml-planner \\
+LD4LG & NeurIPS 2023 & Continuous latent DLM & justinlovelace/ld4lg \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Evaluation Protocol}
+% SOURCE: experiments.tex
+
+For each experiment:
+\begin{itemize}
+  \item Edit 500 test samples per configuration.
+  \item Report mean $\pm$ standard deviation across 3 random seeds.
+  \item Use identical hardware for all methods.
+  \item Apply the same DLM-Eval Suite metrics to all methods for fair comparison.
+\end{itemize}
+
+% ============================================================
+\section{DLM-Eval Suite Implementation}
+\label{app:eval_suite}
+% ============================================================
+% SOURCE: specs.md Module 4
+
+\subsection{Pillar 1: Fluency}
+
+\textbf{Perplexity (PPL).} Computed as $\text{PPL} = \exp(\text{NLL})$ using GPT-2 medium. We use a sliding window of 512 tokens with stride 256 for sequences longer than the model's context window.
+
+\textbf{Grammar errors.} Counted using LanguageTool, averaged per sentence.
+
+\subsection{Pillar 2: Controllability}
+
+\textbf{Attribute accuracy.} A pre-trained DistilBERT classifier (fine-tuned on SST-2 for sentiment, custom for topic/formality) classifies edited text. Accuracy = fraction where predicted attribute matches target.
+
+\subsection{Pillar 3: Edit Quality}
+
+\textbf{BLEU.} Corpus-level BLEU-4 between source and edited texts using SacreBLEU.
+
+\textbf{ROUGE-L.} Longest common subsequence F1 between source and edited texts.
+
+\textbf{BERTScore.} Cosine similarity of BERT embeddings (bert-base-uncased) between source and edited texts. We report F1.
+
+\textbf{Edit distance.} Normalized Levenshtein distance: $\text{Edit-Dist} = \text{Levenshtein}(\text{src}, \text{edited}) / \max(|\text{src}|, |\text{edited}|)$.
+
+\subsection{Pillar 4: Latent Geometry}
+
+\textbf{SSS (Semantic Smoothness Score).} See Section~4.1 of the main paper. Implementation uses all-MiniLM-L6-v2 for sentence embeddings and cosine similarity for adjacent comparison along the SLERP interpolation path.
+
+\textbf{MTS (Monotonic Transition Score).} See Section~4.2 of the main paper. The classifier used matches the attribute being interpolated (e.g., sentiment classifier for negative $\to$ positive interpolation).
+
+\textbf{Cluster separation.} Silhouette score and Calinski-Harabasz (variance ratio) index from scikit-learn, computed on latent vectors labeled by attribute.
+
+\subsection{Pillar 5: Diversity}
+
+\textbf{Self-BLEU.} For each generated text, compute BLEU against all other generated texts and average. Lower indicates more diversity.
+
+\textbf{Distinct-$n$.} Fraction of unique $n$-grams (for $n \in \{1, 2, 3\}$) among all generated tokens.
+
+\subsection{Pillar 6: Efficiency}
+
+\textbf{NFE.} Number of forward evaluations of the model during generation/editing.
+
+\textbf{TPS.} Tokens per second, measured as total output tokens divided by wall-clock time (excluding data loading).
+
+% ============================================================
+\section{LSME Pipeline Flowcharts}
+\label{app:flowcharts}
+% ============================================================
+% SOURCE: specs.md flowcharts (adapted to LaTeX description)
+
+\subsection{Overall LSME Pipeline}
+
+The LSME editing pipeline proceeds as follows:
+
+\begin{enumerate}
+    \item \textbf{Input:} Original text (e.g., ``The food was terrible...'') and target attribute (e.g., ``positive'').
+    \item \textbf{Tokenize:} Convert text to token IDs (B, L).
+    \item \textbf{Attribute Latent Encoder:} Look up pre-computed centroid $\mathbf{z}_\text{target}$ for the target attribute.
+    \item \textbf{Partial Mask:} Randomly mask $r$ fraction of positions $\to$ $\mathbf{x}_t$ with some [MASK] tokens.
+    \item \textbf{Reverse Diffusion:} Run MMDiT from $t_\text{entry}$ to 0, with:
+    \begin{itemize}
+        \item Text input: partially masked tokens
+        \item Latent input: target $\mathbf{z}_\text{target}$ (clean, $t_z = 0$)
+        \item Each step: predict logits, sample from MDLM posterior, apply copy flag
+    \end{itemize}
+    \item \textbf{Output:} Edited text (e.g., ``The food was great!'').
+\end{enumerate}
+
+\subsection{Latent Geometry Analysis Pipeline}
+
+\begin{enumerate}
+    \item \textbf{Input:} Two attribute centroids (e.g., $\mathbf{z}_\text{negative}$, $\mathbf{z}_\text{positive}$).
+    \item \textbf{SLERP Interpolation:} Compute $N$ latent points at $\alpha = [0, 0.1, \ldots, 1.0]$.
+    \item \textbf{For each $\mathbf{z}_i$:} Generate text via L2T sampling; compute sentence embedding; run attribute classifier.
+    \item \textbf{Compute:}
+    \begin{itemize}
+        \item SSS = mean cosine similarity of adjacent sentence embeddings
+        \item MTS = fraction of monotonically increasing classifier scores
+        \item Interpolation PPL = mean perplexity along the path
+    \end{itemize}
+\end{enumerate}
+
+% ============================================================
+\section{Extended Related Work}
+\label{app:extended_related}
+% ============================================================
+% SOURCE: literature.md -- additional papers
+
+\subsection{Additional Relevant Papers}
+
+The following papers are relevant to LSME but were discussed in less detail in the main paper due to space constraints:
+
+\begin{itemize}
+    \item \textbf{CANDI}~\citep{candi2025}: Decouples discrete masking from continuous Gaussian noise via token identifiability. Unlike LSME, CANDI adds continuous noise at the token level (V-dimensional one-hot + noise) rather than using a compressed semantic latent channel.
+
+    \item \textbf{EDLM}~\citep{xu2025edlm}: Uses energy functions to capture inter-token dependencies via importance sampling. Energy-based formulation naturally supports conditional generation but operates in discrete-only space without a learned latent.
+
+    \item \textbf{STAR-LDM}~\citep{lovelace2025starlm}: Integrates latent diffusion ``thinking'' with AR generation using Sentence-T5 (768D) projected to 8 soft prompt tokens. Unlike LSME, it uses continuous diffusion for text generation rather than discrete masked diffusion.
+
+    \item \textbf{Cosmos}~\citep{meshchaninov2025}: Autoencoder compresses text into a smooth latent space for continuous diffusion, achieving 2x faster inference while matching token-level quality. Demonstrates the value of smooth latent spaces for text generation.
+
+    \item \textbf{BD3-LM}~\citep{arriola2025bd3lm}: Bridges AR and diffusion via block decomposition with per-block diffusion and AR across blocks. Achieves SOTA likelihoods among DLMs but does not incorporate continuous latent conditioning.
+
+    \item \textbf{Duo}~\citep{sahoo2025duo}: Proves discrete diffusion naturally emerges from Gaussian diffusion, providing theoretical justification for coupling continuous and discrete processes in a single model.
+\end{itemize}
+
+\subsection{The Two Worlds of Text Diffusion}
+% SOURCE: research_gap.tex Section 6
+
+Our literature analysis confirms two disconnected paradigms in text diffusion:
+
+\textbf{World 1 (Discrete Masked DLMs):} MDLM, SEDD, ReMDM, EDLM, CANDI, BD3-LM, LLaDA, Dream. These achieve strong language modeling with efficient masked cross-entropy training and scale to 8B parameters. However, they have limited controllability---only class-conditional CFG, remasking, or energy-based guidance.
+
+\textbf{World 2 (Continuous Latent DLMs):} Diffusion-LM, LD4LG, PLANNER, STAR-LDM, LaDiR, Cosmos. These offer rich controllability via classifier gradients, CFG, reward guidance, and latent interpolation. However, they require continuous-to-discrete decoding, which introduces rounding artifacts.
+
+LSME bridges these worlds by using discrete masked diffusion for text tokens (World~1 quality) while accessing a continuous latent channel for control (World~2 controllability).
+
+% ============================================================
+\section{Research Gap Analysis}
+\label{app:gaps_detailed}
+% ============================================================
+% SOURCE: research_gap.tex -- detailed gap analysis
+
+\subsection{Gaps Addressed by LSME}
+
+\begin{table}[h]
+\centering
+\caption{Detailed gap resolution mapping.}
+\small
+\begin{tabular}{p{1.5cm}p{4.5cm}p{2.5cm}p{4cm}}
+\toprule
+\textbf{Gap ID} & \textbf{Description} & \textbf{LSME Component} & \textbf{Resolution} \\
+\midrule
+C4 & No DLM supports SDEdit-style editing with continuous latent steering & LSME algorithm & Partial mask + latent replacement + joint denoise \\
+\addlinespace
+CC2 & Latent-steered editing gap: no model combines masking-based editing with continuous latent steering & LSME algorithm & First SDEdit-style editing for discrete DLMs \\
+\addlinespace
+C3, TD5 & Latent space geometry unexplored in DLMs & SSS \& MTS & First formal metrics for DLM latent structure \\
+\addlinespace
+E1--E5 & No unified evaluation across controllability + quality + editing + efficiency & DLM-Eval Suite & 6-pillar framework \\
+\addlinespace
+CC4--5 & Evaluation completeness gap & DLM-Eval Suite & Addresses CCDD reviewer criticism directly \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Gaps Not Addressed (Future Work)}
+
+\begin{itemize}
+    \item \textbf{Gap 3 (M6, CC3):} Guidance unification---combining CFG, classifier gradients, and reward guidance through a single latent channel. LSME demonstrates latent conditioning but does not explore all guidance modes.
+    \item \textbf{Gap 5 (C1, TD1):} Conditional/seq2seq generation via latent conditioning. LSME focuses on editing rather than conditional generation.
+    \item \textbf{Gap 2 (M5):} Joint end-to-end training of latent encoder + discrete text diffusion. LSME operates on a pre-trained model and does not address training methodology.
+\end{itemize}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

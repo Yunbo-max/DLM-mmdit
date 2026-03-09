@@ -1,0 +1,29 @@
+# DLM-Eval Suite Configuration
+
+defaults:
+  - _self_
+
+# Input
+results_file: ???  # Required: JSON from run_lsme.py
+target_attribute: "POSITIVE"
+
+# Models for evaluation
+eval:
+  fluency_model: "gpt2"
+  classifier_name: "distilbert-base-uncased-finetuned-sst-2-english"
+  sentence_encoder: "all-MiniLM-L6-v2"
+  device: "cuda"
+
+# Latent geometry (optional)
+geometry:
+  enabled: false
+  checkpoint_path: null
+  latent_dir: null
+  metadata_file: null
+  attribute: "sentiment"
+  n_pairs: 10
+  n_points: 10
+  n_samples: 5
+
+# Output
+output_dir: "results/eval/"

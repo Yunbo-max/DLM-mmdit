@@ -1,0 +1,88 @@
+\begin{thebibliography}{16}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Austin et~al.(2021)Austin, Johnson, Ho, Tarlow, and van~den Berg]{austin2021d3pm}
+Jacob Austin, Daniel~D Johnson, Jonathan Ho, Daniel Tarlow, and Rianne van~den Berg.
+\newblock Structured denoising diffusion models in discrete state-spaces.
+\newblock In \emph{Advances in Neural Information Processing Systems}, volume~34, pages 17981--17993, 2021.
+
+\bibitem[Devlin et~al.(2019)Devlin, Chang, Lee, and Toutanova]{devlin2019bert}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.
+\newblock Bert: Pre-training of deep bidirectional transformers for language understanding.
+\newblock \emph{arXiv preprint arXiv:1810.04805}, 2019.
+
+\bibitem[Duquenne et~al.(2023)Duquenne, Schwenk, and Sagot]{duquenne2023sonar}
+Paul-Ambroise Duquenne, Holger Schwenk, and Beno{\^\i}t Sagot.
+\newblock Sonar: Sentence-level multimodal and language-agnostic representations.
+\newblock \emph{arXiv preprint arXiv:2308.11466}, 2023.
+
+\bibitem[Esser et~al.(2024)Esser, Kulal, Blattmann, Entezari, M{\"u}ller, Saini, Levi, Lorber, Sauer, Boesel, et~al.]{esser2024sd3}
+Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas M{\"u}ller, Harry Saini, Yam Levi, Dominik Lorber, Axel Sauer, Frederic Boesel, et~al.
+\newblock Scaling rectified flow transformers for high-resolution image synthesis.
+\newblock \emph{arXiv preprint arXiv:2403.03206}, 2024.
+
+\bibitem[Gulrajani and Hashimoto(2024)]{gulrajani2024hdlm}
+Ishaan Gulrajani and Tatsunori~B Hashimoto.
+\newblock Likelihood-based diffusion language models.
+\newblock \emph{Advances in Neural Information Processing Systems}, 36, 2024.
+
+\bibitem[Ho et~al.(2020)Ho, Jain, and Abbeel]{ho2020ddpm}
+Jonathan Ho, Ajay Jain, and Pieter Abbeel.
+\newblock Denoising diffusion probabilistic models.
+\newblock In \emph{Advances in Neural Information Processing Systems}, volume~33, pages 6840--6851, 2020.
+
+\bibitem[Li et~al.(2022)Li, Thickstun, Gulrajani, Liang, and Hashimoto]{li2022diffusionlm}
+Xiang~Lisa Li, John Thickstun, Ishaan Gulrajani, Percy Liang, and Tatsunori~B Hashimoto.
+\newblock Diffusion-lm improves controllable text generation.
+\newblock In \emph{Advances in Neural Information Processing Systems}, volume~35, 2022.
+
+\bibitem[Lou et~al.(2024)Lou, Meng, and Ermon]{lou2024mdlm}
+Aaron Lou, Chenlin Meng, and Stefano Ermon.
+\newblock Discrete diffusion modeling by estimating the ratios of the data distribution.
+\newblock In \emph{International Conference on Machine Learning}, 2024.
+
+\bibitem[Lovelace et~al.(2024)Lovelace, Kishore, Wan, Weinberger, and Artzi]{lovelace2024latent}
+Justin Lovelace, Varsha Kishore, Changhao Wan, Kilian~Q Weinberger, and Yoav Artzi.
+\newblock Latent diffusion for language generation.
+\newblock \emph{arXiv preprint arXiv:2212.09462}, 2024.
+
+\bibitem[Nichol and Dhariwal(2021)]{nichol2021improved}
+Alexander~Quinn Nichol and Prafulla Dhariwal.
+\newblock Improved denoising diffusion probabilistic models.
+\newblock \emph{arXiv preprint arXiv:2102.09672}, 2021.
+
+\bibitem[Peebles and Xie(2023)]{peebles2023dit}
+William Peebles and Saining Xie.
+\newblock Scalable diffusion models with transformers.
+\newblock \emph{arXiv preprint arXiv:2212.09748}, 2023.
+
+\bibitem[Radford et~al.(2019)Radford, Wu, Child, Luen, Amodei, and Sutskever]{radford2019gpt2}
+Alec Radford, Jeffrey Wu, Rewon Child, David Luen, Dario Amodei, and Ilya Sutskever.
+\newblock Language models are unsupervised multitask learners.
+\newblock 2019.
+
+\bibitem[Rombach et~al.(2022)Rombach, Blattmann, Lorenz, Esser, and Ommer]{rombach2022ldm}
+Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj{\"o}rn Ommer.
+\newblock High-resolution image synthesis with latent diffusion models.
+\newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition}, pages 10684--10695, 2022.
+
+\bibitem[Ruette and Fleuret(2024)]{ruette2024gidd}
+David~V Ruette and Fran{\c{c}}ois Fleuret.
+\newblock Gidd: Generative interpolative discrete diffusion.
+\newblock \emph{arXiv preprint arXiv:2407.08064}, 2024.
+
+\bibitem[Sahoo et~al.(2024)Sahoo, Arriola, Schiff, Gokaslan, Marroquin, Chiu, Rush, and Kuleshov]{sahoo2024simple}
+Subham~Sekhar Sahoo, Marianne Arriola, Yair Schiff, Aaron Gokaslan, Edgar Marroquin, Justin~T Chiu, Alexander Rush, and Volodymyr Kuleshov.
+\newblock Simple and effective masked diffusion language models.
+\newblock \emph{arXiv preprint arXiv:2406.07524}, 2024.
+
+\bibitem[Wang et~al.(2024)Wang, Yang, Huang, Yang, Majumder, and Wei]{wang2024e5}
+Liang Wang, Nan Yang, Xiaolong Huang, Linjun Yang, Rangan Majumder, and Furu Wei.
+\newblock Multilingual e5 text embeddings: A technical report.
+\newblock \emph{arXiv preprint arXiv:2402.05672}, 2024.
+
+\end{thebibliography}
