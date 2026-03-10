@@ -63,4 +63,12 @@ class LatentConditionedDiffusionTrainer(nn.Module):
                 reduction=self.config.loss.reduction,
                 force_transitting=force_transitting,
             )
+
+            # NaN/Inf safety: clamp loss to prevent training divergence
+            if torch.isnan(loss) or torch.isinf(loss):
+                print(f"WARNING: Invalid loss detected: {loss.item()}, replacing with 0")
+                loss = torch.tensor(0.0, device=self.device, dtype=self.dtype, requires_grad=True)
+            else:
+                loss = torch.clamp(loss, min=0.0, max=100.0)
+
         return loss, metrics

@@ -53,14 +53,46 @@ class Logger:
             wandb.log(*args, **kwargs)
 
 
+def _check_gpu_health(local_rank: int) -> None:
+    """Check GPU health and report memory usage."""
+    if not torch.cuda.is_available():
+        return
+    try:
+        torch.cuda.synchronize(device=local_rank)
+        mem_allocated = torch.cuda.memory_allocated(local_rank) / 1024**3
+        mem_reserved = torch.cuda.memory_reserved(local_rank) / 1024**3
+        mem_total = torch.cuda.get_device_properties(local_rank).total_mem / 1024**3
+        print(f"GPU {local_rank}: {mem_allocated:.2f}GB allocated, "
+              f"{mem_reserved:.2f}GB reserved, {mem_total:.1f}GB total")
+    except RuntimeError as e:
+        print(f"WARNING: GPU {local_rank} health check failed: {e}")
+
+
+def safe_barrier(local_rank: int = None) -> None:
+    """Distributed barrier with CUDA sync and error handling."""
+    if not (dist.is_available() and dist.is_initialized()):
+        return
+    if torch.cuda.is_available() and local_rank is not None:
+        try:
+            torch.cuda.synchronize(device=local_rank)
+        except RuntimeError as e:
+            rank = dist.get_rank() if dist.is_initialized() else 0
+            mem_allocated = torch.cuda.memory_allocated(local_rank) / 1024**3
+            print(f"[Rank {rank}] CUDA error before barrier: {e}, "
+                  f"GPU {local_rank} memory: {mem_allocated:.2f}GB")
+            raise
+    dist.barrier()
+
+
 @contextmanager
-def main_process_first():
-    if dist.is_initialized():
+def main_process_first(local_rank: int = None):
+    """Ensure rank 0 runs first (e.g. for file I/O), then other ranks proceed."""
+    if dist.is_available() and dist.is_initialized():
         if dist.get_rank() == 0:
             yield
-            dist.barrier()
+            safe_barrier(local_rank)
         else:
-            dist.barrier()
+            safe_barrier(local_rank)
             yield
     else:
         yield
@@ -204,6 +236,10 @@ def main(config):
     device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using {device=} and {dtype=}")
 
+    # GPU health check at startup
+    if torch.cuda.is_available():
+        _check_gpu_health(local_rank)
+
     if config.training.resume is None:
         tokenizer = get_tokenizer(config)
         vocab_size = len(tokenizer)
@@ -244,7 +280,7 @@ def main(config):
         ) = load_checkpoint_for_training(config.training.resume, device=device, dtype=dtype)
     
     # FIXED: Use get_simple_dataloaders directly
-    with main_process_first():
+    with main_process_first(local_rank):
         train_dl, test_dl = get_simple_dataloaders(config, tokenizer)
 
     max_lr = config.optimizer.lr
@@ -338,20 +374,30 @@ def main(config):
                 # if 'latent_norm' in metrics:
                 #     print(f"  Latent norm: {metrics['latent_norm']:.4f}, std: {metrics['latent_std']:.4f}")
 
-            (loss * config.loss.loss_scale).backward()
-
-            if config.optimizer.grad_clip_norm and config.optimizer.grad_clip_norm > 0:
-                norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optimizer.grad_clip_norm)
+            # Skip backward pass if loss is invalid
+            loss_val = loss.item()
+            if torch.isnan(loss) or torch.isinf(loss):
+                print(f"WARNING: Invalid loss ({loss_val}) at step {step}, skipping update")
+                optimizer.zero_grad()
+                norm = torch.tensor(0.0)
             else:
-                norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1e6)
-            if torch.isnan(norm):
-                print(f"Warning: NaN gradient detected at step {step}")
-                for param in model.parameters():
-                    if param.grad is not None:
-                        param.grad.data.zero_()
+                (loss * config.loss.loss_scale).backward()
 
-            optimizer.step()
-            optimizer.zero_grad()
+                if config.optimizer.grad_clip_norm and config.optimizer.grad_clip_norm > 0:
+                    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optimizer.grad_clip_norm)
+                else:
+                    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1e6)
+
+                if torch.isnan(norm) or torch.isinf(norm):
+                    print(f"WARNING: Invalid gradient norm ({norm.item():.4f}) at step {step}, zeroing grads")
+                    for param in model.parameters():
+                        if param.grad is not None:
+                            param.grad = None
+                    norm = torch.tensor(0.0)
+                    optimizer.zero_grad()
+                else:
+                    optimizer.step()
+                    optimizer.zero_grad()
 
             # Logging
             batch_tokens = batch.get("attention_mask", torch.ones_like(batch["input_ids"])).sum().item() * config.training.world_size
@@ -422,7 +468,7 @@ def main(config):
             # Save checkpoint
             state.step += 1
             if ((step + 1) % config.logging.save_freq) == 0:
-                dist.barrier()
+                safe_barrier(local_rank)
                 output_path = Path(config.logging.save_dir, config.logging.run_name)
                 suffix = "latest"
                 if (step + 1) == 500000:
@@ -431,14 +477,14 @@ def main(config):
                     suffix = "-1M"
                 elif (step + 1) == 250000:
                     suffix = "-250k"
-                
+
                 output_path = output_path / suffix
                 if is_main_process:
                     save_checkpoint(output_path, trainer, optimizer, state)
-                dist.barrier()
+                safe_barrier(local_rank)
                 output_path.mkdir(exist_ok=True, parents=True)
                 save_rng_state(output_path, global_rank)
-                dist.barrier()
+                safe_barrier(local_rank)
 
             pbar.update(1)
 

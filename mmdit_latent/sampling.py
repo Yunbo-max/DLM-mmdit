@@ -33,15 +33,19 @@ class Sampler(nn.Module):
         self.t_eps = t_eps
 
     @abstractmethod
-    def _do_generate(self, num_samples, num_denoising_steps, max_length, show_progress=False, device=None):
+    def _do_generate(self, num_samples, num_denoising_steps, max_length, show_progress=False, device=None, latents=None):
         raise NotImplementedError
 
     @torch.no_grad()
-    def generate(self, num_samples=1, num_denoising_steps=1000, max_length=512, decode=True, show_progress=True, **kwargs):
+    def generate(self, num_samples=1, num_denoising_steps=1000, max_length=512, decode=True, show_progress=True, latents=None, **kwargs):
         max_length = max_length or self.model.config.max_seq_len
         device = next(self.model.parameters()).device
 
-        z_t = self._do_generate(num_samples, num_denoising_steps, max_length, show_progress=show_progress, device=device, **kwargs)
+        # Move latents to device if provided
+        if latents is not None:
+            latents = latents.to(device)
+
+        z_t = self._do_generate(num_samples, num_denoising_steps, max_length, show_progress=show_progress, device=device, latents=latents, **kwargs)
 
         if decode:
             texts = self.tokenizer.batch_decode(z_t, skip_special_tokens=True)
@@ -59,8 +63,8 @@ class GiddSampler(Sampler):
             self.tokenizer = tokenizer
             self.min_p = min_p
 
-        def forward(self, z_t, t, s):
-            logits = self.model(z_t, t)
+        def forward(self, z_t, t, s, latents=None):
+            logits = self.model(z_t, t, latents=latents)
             logits[..., self.tokenizer.mask_token_id] = -1e6
             logits = logits[..., :len(self.tokenizer)]
 
@@ -92,7 +96,7 @@ class GiddSampler(Sampler):
         if compile_step:
             self.sampling_step = torch.compile(self.sampling_step)
 
-    def _do_generate(self, num_samples, num_denoising_steps, max_length, show_progress=False, device=None):
+    def _do_generate(self, num_samples, num_denoising_steps, max_length, show_progress=False, device=None, latents=None):
 
         ts = torch.linspace(0, 1, num_denoising_steps + 1, device=device).unsqueeze(-1)
         ts = (1 - 2 * self.t_eps) * ts + self.t_eps
@@ -100,9 +104,9 @@ class GiddSampler(Sampler):
         # zt = sample_categorical(p_zt)
         z_t = self.noise_schedule.sample_prior((num_samples, max_length)).to(device, non_blocking=True)
         for i in tqdm.trange(num_denoising_steps - 1, -1, -1, desc="Generating samples", disable=not show_progress, dynamic_ncols=True):
-            z_t = self.sampling_step(z_t, ts[i], ts[max(0, i-1)]).clone()
+            z_t = self.sampling_step(z_t, ts[i], ts[max(0, i-1)], latents=latents).clone()
         return z_t
-    
+
 
 class HDLMSampler(Sampler):
     class DenoisingStep(nn.Module):
@@ -132,8 +136,8 @@ class HDLMSampler(Sampler):
             self.temperature = config.get('temperature', 1.0)
             self.use_auxiliary = config.model.get('use_auxiliary', False)
 
-        def forward(self, z_t, t, s, last_step=False):
-            logits, logits_clusters = self.model(z_t, t)
+        def forward(self, z_t, t, s, last_step=False, latents=None):
+            logits, logits_clusters = self.model(z_t, t, latents=latents)
             logits[..., self.tokenizer.mask_token_id] = -1e6
             logits[..., self.vocab_size:] = -1e6
             logits_clusters[..., :self.vocab_size] = -1e6
@@ -246,14 +250,14 @@ class HDLMSampler(Sampler):
         if compile_step:
             self.sampling_step = torch.compile(self.sampling_step)
 
-    def _do_generate(self, num_samples, num_denoising_steps, max_length, show_progress=False, device=None, **kwargs):
+    def _do_generate(self, num_samples, num_denoising_steps, max_length, show_progress=False, device=None, latents=None, **kwargs):
 
         ts = torch.linspace(0, 1, num_denoising_steps + 1, device=device).unsqueeze(-1)
         ts = (1 - 2 * self.t_eps) * ts + self.t_eps
 
         z_t = self.noise_schedule.sample_prior((num_samples, max_length)).to(device, non_blocking=True)
-        for i in tqdm.trange(num_denoising_steps - 1, -1, -1, desc="Generating samples", disable=not show_progress, dynamic_ncols=True):  
-            z_t = self.sampling_step(z_t, ts[i], ts[max(0, i-1)], last_step=(i == 0), **kwargs).clone()
+        for i in tqdm.trange(num_denoising_steps - 1, -1, -1, desc="Generating samples", disable=not show_progress, dynamic_ncols=True):
+            z_t = self.sampling_step(z_t, ts[i], ts[max(0, i-1)], last_step=(i == 0), latents=latents, **kwargs).clone()
         return z_t
 
 
@@ -271,8 +275,8 @@ class MDLMSampler(Sampler):
             sigma = -torch.log1p(-(1 - eps) * t.clip(eps, 1))
             return dsigma, sigma
 
-        def forward(self, z_t, t, tm1, i=None, eps=1e-4):
-            logits = self.model(z_t, t)
+        def forward(self, z_t, t, tm1, i=None, eps=1e-4, latents=None):
+            logits = self.model(z_t, t, latents=latents)
             logits[..., self.mask_id] = -1e6
 
             if i == 0:
@@ -306,13 +310,13 @@ class MDLMSampler(Sampler):
         if compile_step:
             self.sampling_step = torch.compile(self.sampling_step)
 
-    def _do_generate(self, num_samples, num_denoising_steps, max_length, show_progress=False, device=None):
+    def _do_generate(self, num_samples, num_denoising_steps, max_length, show_progress=False, device=None, latents=None):
         z_t = self.noise_schedule.sample_prior((num_samples, max_length)).to(device, non_blocking=True)
 
         ts = torch.linspace(self.t_eps, 1 - self.t_eps, num_denoising_steps + 1, device=device).unsqueeze(-1)
 
         for i in tqdm.trange(num_denoising_steps - 1, -1, -1, desc="Generating samples", disable=not show_progress):
-            z_t = self.sampling_step(z_t, ts[i], ts[max(0, i-1)], i=i, eps=self.t_eps).clone()
+            z_t = self.sampling_step(z_t, ts[i], ts[max(0, i-1)], i=i, eps=self.t_eps, latents=latents).clone()
 
         return z_t
 

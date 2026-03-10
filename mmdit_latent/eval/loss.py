@@ -6,11 +6,11 @@ import tqdm
 import torch
 from transformers import AutoModelForCausalLM
 
-from mmdit_latent.data import get_dataloaders
+from mmdit_latent.data_simple import get_simple_dataloaders
 from mmdit_latent.utils import parse_dtype
 from mmdit_latent.loss import get_loss
 from mmdit_latent.checkpoints import load_checkpoint
-from mmdit_latent.trainer import get_trainer
+from mmdit_latent.trainer_latent import LatentConditionedDiffusionTrainer
 
 
 @hydra.main(config_path="../configs", config_name="eval", version_base="1.1")
@@ -29,9 +29,9 @@ def main(args):
     dtype = parse_dtype(config.training.dtype)
 
     loss_fn = get_loss(config, tokenizer, noise_schedule)
-    _, test_dl = get_dataloaders(config, tokenizer)
+    _, test_dl = get_simple_dataloaders(config, tokenizer)
 
-    trainer = get_trainer(config, model, tokenizer, noise_schedule, loss_fn, dtype)
+    trainer = LatentConditionedDiffusionTrainer(config, model, tokenizer, noise_schedule, loss_fn, dtype)
     trainer.to(device)
     trainer = torch.compile(trainer)
     model.eval()

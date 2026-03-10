@@ -1,0 +1,47 @@
+# LSME Yelp Sentiment Editing Config
+# Extends: mmdit_latent/configs/mdlm_mmdit_latent.yaml (base model config)
+
+defaults:
+  - _self_
+
+# Checkpoint (trained MMDiT model)
+checkpoint_path: ???  # Required: path to trained checkpoint
+
+# LSME editing parameters
+lsme:
+  mask_ratio: 0.3
+  steps: 100
+  temperature: 1.0
+  mask_mode: "random"  # random, entropy, suffix
+  max_length: 512
+  batch_size: 32
+
+# Attribute encoder
+attribute:
+  name: "sentiment"
+  target_value: "positive"
+  latent_dir: ???  # Required: path to latent .npy files
+  metadata_file: ???  # Required: JSON with attribute labels
+
+# Dataset
+data:
+  dataset_name: "yelp_polarity"
+  split: "test"
+  max_samples: 500
+  filter_label: 0  # 0=negative (to edit to positive)
+
+# Evaluation
+eval:
+  fluency_model: "gpt2"
+  classifier_name: "distilbert-base-uncased-finetuned-sst-2-english"
+  sentence_encoder: "all-MiniLM-L6-v2"
+  device: "cuda"
+
+# Ablation sweep (multiple mask_ratios)
+sweep:
+  mask_ratios: [0.1, 0.3, 0.5, 0.7]
+  mask_modes: ["random"]
+  steps_values: [100]
+
+# Output
+output_dir: "results/lsme_yelp/"

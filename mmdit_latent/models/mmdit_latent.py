@@ -65,6 +65,7 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
         # --- Latent pathway ---
         self.latent_encoder = nn.Sequential(
             nn.Linear(latent_dim, hidden_size * 2),
+            nn.LayerNorm(hidden_size * 2),
             nn.GELU(),
             nn.Linear(hidden_size * 2, latent_hidden_size),
         )

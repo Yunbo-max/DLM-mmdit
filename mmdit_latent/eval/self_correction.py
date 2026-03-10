@@ -8,8 +8,8 @@ from mmdit_latent.checkpoints import load_checkpoint
 from mmdit_latent.utils import sample_categorical
 
 
-def correction_step(model, tokenizer, z_t, t, temp, tokens_per_step):
-    logits = model(z_t, t)
+def correction_step(model, tokenizer, z_t, t, temp, tokens_per_step, latents=None):
+    logits = model(z_t, t, latents=latents)
     logits[..., tokenizer.mask_token_id] = -1e6
 
     p_t = (logits / temp).softmax(-1)
@@ -42,10 +42,22 @@ def main(args):
     samples_path = hydra.utils.to_absolute_path(args.samples_path)
     z_ts = torch.load(samples_path, weights_only=True)
 
+    # Load latents if provided
+    import numpy as np
+    latent_path = args.get("latent_path", None)
+    all_latents = None
+    if latent_path is not None:
+        latent_path = hydra.utils.to_absolute_path(latent_path)
+        print(f"Loading latents from {latent_path}")
+        if latent_path.endswith(".npy"):
+            all_latents = torch.from_numpy(np.load(latent_path)).float().to(device)
+        else:
+            all_latents = torch.load(latent_path, map_location=device, weights_only=True).float()
+
     metrics = []
     samples = []
     z_t: torch.Tensor
-    for z_t in tqdm.tqdm(z_ts, desc="Correction", dynamic_ncols=True, smoothing=0.0):
+    for idx, z_t in enumerate(tqdm.tqdm(z_ts, desc="Correction", dynamic_ncols=True, smoothing=0.0)):
         max_acc = 0
         curr_patience = 0
 
@@ -53,7 +65,12 @@ def main(args):
         z_t_init = z_t.clone()
         t = torch.full((z_t.shape[0],), device=device, fill_value=args.t0)
 
-        logits = model(z_t, t)
+        # Get latent for this sample
+        batch_latents = None
+        if all_latents is not None and idx < all_latents.shape[0]:
+            batch_latents = all_latents[idx:idx+1]
+
+        logits = model(z_t, t, latents=batch_latents)
         logits[..., tokenizer.mask_token_id] = -1e6
         init_acc = (z_t == logits.argmax(-1)).float().mean().item()
         
@@ -61,7 +78,7 @@ def main(args):
         early_stopped = 0
         for i in range(args.num_denoising_steps):
             with torch.no_grad(), torch.autocast(device.type, dtype=dtype):
-                z_t_next, acc = correction_step(model, tokenizer, z_t, t, args.temp, args.tokens_per_step)
+                z_t_next, acc = correction_step(model, tokenizer, z_t, t, args.temp, args.tokens_per_step, latents=batch_latents)
 
                 if acc > max_acc:
                     max_acc = acc

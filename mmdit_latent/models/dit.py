@@ -510,7 +510,7 @@ class DIT(nn.Module, huggingface_hub.PyTorchModelHubMixin):
     else:
       return  bias_dropout_add_scale_fused_inference
 
-  def forward(self, indices, sigma, attention_mask=None):
+  def forward(self, indices, sigma, latents=None, attention_mask=None):
     x = self.vocab_embed(indices)
     c = F.silu(self.sigma_map(sigma))
 
