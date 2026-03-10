@@ -8,3 +8,4 @@ t0: 0.01
 max_patience: 32
 tokens_per_step: 1
 metrics_path: metrics.csv
+latent_path: null  # Optional: .npy or .pt latent file for conditioned self-correction

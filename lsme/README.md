@@ -83,6 +83,13 @@ lsme/
     ├── utils.py                         #   sample_categorical(), etc.
     ├── train_latent_dit.py              #   Training entry point
     ├── trainer_latent.py                #   Training loop
+    ├── eval/                            #   Evaluation scripts (synced from mmdit_latent)
+    │   ├── generate_samples.py          #     Generate token samples
+    │   ├── decode.py                    #     Decode tokens to text
+    │   ├── generative_ppl.py            #     GPT-2 perplexity evaluation
+    │   ├── loss.py                      #     Validation loss evaluation
+    │   ├── self_correction.py           #     GIDD-style iterative refinement
+    │   └── compare_samples.py           #     LaTeX diff visualization
     └── configs/                         #   Model/data/optimizer configs
         ├── mdlm_mmdit_latent.yaml       #     Base: 768d, 12 blocks, 12 heads
         ├── model/{tiny,small,base,1B}.yaml

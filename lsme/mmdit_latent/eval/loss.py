@@ -5,16 +5,12 @@ import hydra
 import tqdm
 import torch
 from transformers import AutoModelForCausalLM
-import os
-import sys
 
-# Add the project root directory to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
-from latentDLM_mmdit.data_simple import get_simple_dataloaders
-from latentDLM_mmdit.utils import parse_dtype
-from latentDLM_mmdit.checkpoints_mmdit import load_full_model
-from latentDLM_mmdit.improved_trainer_stable import MultimodalDiffusionTrainer_new
+from mmdit_latent.data_simple import get_simple_dataloaders
+from mmdit_latent.utils import parse_dtype
+from mmdit_latent.loss import get_loss
+from mmdit_latent.checkpoints import load_checkpoint
+from mmdit_latent.trainer_latent import LatentConditionedDiffusionTrainer
 
 
 @hydra.main(config_path="../configs", config_name="eval", version_base="1.1")
@@ -25,28 +21,20 @@ def main(args):
 
     ckpt_path = hydra.utils.to_absolute_path(args.path)
 
-    model, text_noise_schedule, latent_diffusion, tokenizer, config, _ = load_full_model(
-        ckpt_path, device=device
-    )
+    model, noise_schedule, tokenizer, config = load_checkpoint(ckpt_path, device=device)
     if args.use_gpt2:
         model = AutoModelForCausalLM.from_pretrained("gpt2")
     model.eval()
     config.training.eval_batch_size = args.batch_size
     dtype = parse_dtype(config.training.dtype)
 
-    # Create trainer for eval
-    trainer = MultimodalDiffusionTrainer_new(
-        model=model,
-        tokenizer=tokenizer,
-        text_noise_schedule=text_noise_schedule,
-        dtype=dtype,
-        config=config,
-    )
+    loss_fn = get_loss(config, tokenizer, noise_schedule)
+    _, test_dl = get_simple_dataloaders(config, tokenizer)
+
+    trainer = LatentConditionedDiffusionTrainer(config, model, tokenizer, noise_schedule, loss_fn, dtype)
     trainer.to(device)
     trainer = torch.compile(trainer)
     model.eval()
-
-    _, test_dl = get_simple_dataloaders(config, tokenizer)
 
     eval_metrics = {}
     with torch.no_grad():
@@ -68,8 +56,7 @@ def main(args):
         "loss": eval_loss / num_eval_samples,
         **{k: v / num_eval_samples for k, v in eval_metrics.items()},
     }
-    if "elbo" in eval_metrics:
-        eval_metrics["ppl"] = np.exp(eval_metrics["elbo"])
+    eval_metrics["ppl"] = np.exp(eval_metrics["elbo"])
 
     eval_metrics["path"] = ckpt_path
 

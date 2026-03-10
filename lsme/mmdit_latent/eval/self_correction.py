@@ -2,44 +2,14 @@ import pandas as pd
 import hydra
 import tqdm
 import torch
-import numpy as np
-import os
-import sys
 
-# Add the project root directory to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
-from latentDLM_mmdit.utils import parse_dtype, sample_categorical
-from latentDLM_mmdit.checkpoints_mmdit import load_full_model
-
-
-class L2TModelWrapper(torch.nn.Module):
-    """Wraps MultimodalMMDiT to expose model(z_t, t) -> text_logits interface."""
-    def __init__(self, model, latents=None):
-        super().__init__()
-        self.model = model
-        self.register_buffer("_latents", latents if latents is not None else torch.empty(0))
-
-    @property
-    def latents(self):
-        return self._latents if self._latents.numel() > 0 else None
-
-    def forward(self, z_t, t, **kwargs):
-        batch_size = z_t.shape[0]
-        device = z_t.device
-        latent_t = torch.zeros(batch_size, device=device)
-        latents = self.latents
-        if latents is not None:
-            if latents.shape[0] == 1:
-                latents = latents.expand(batch_size, -1)
-            elif latents.shape[0] < batch_size:
-                latents = latents[:batch_size]
-        result = self.model(z_t, latents, t, latent_t)
-        return result[0]  # text_logits
+from mmdit_latent.utils import parse_dtype
+from mmdit_latent.checkpoints import load_checkpoint
+from mmdit_latent.utils import sample_categorical
 
 
 def correction_step(model, tokenizer, z_t, t, temp, tokens_per_step, latents=None):
-    logits = model(z_t, t)
+    logits = model(z_t, t, latents=latents)
     logits[..., tokenizer.mask_token_id] = -1e6
 
     p_t = (logits / temp).softmax(-1)
@@ -62,14 +32,18 @@ def main(args):
 
     ckpt_path = hydra.utils.to_absolute_path(args.path)
 
-    model, text_noise_schedule, latent_diffusion, tokenizer, config, _ = load_full_model(
-        ckpt_path, device=device
-    )
+    model, noise_schedule, tokenizer, config = load_checkpoint(ckpt_path, device=device)
     model.eval()
     config.training.eval_batch_size = args.batch_size
     dtype = parse_dtype(config.training.dtype)
 
+    model = torch.compile(model)
+
+    samples_path = hydra.utils.to_absolute_path(args.samples_path)
+    z_ts = torch.load(samples_path, weights_only=True)
+
     # Load latents if provided
+    import numpy as np
     latent_path = args.get("latent_path", None)
     all_latents = None
     if latent_path is not None:
@@ -79,13 +53,6 @@ def main(args):
             all_latents = torch.from_numpy(np.load(latent_path)).float().to(device)
         else:
             all_latents = torch.load(latent_path, map_location=device, weights_only=True).float()
-
-    # Wrap model for L2T interface
-    wrapped_model = L2TModelWrapper(model, latents=all_latents).to(device)
-    wrapped_model = torch.compile(wrapped_model)
-
-    samples_path = hydra.utils.to_absolute_path(args.samples_path)
-    z_ts = torch.load(samples_path, weights_only=True)
 
     metrics = []
     samples = []
@@ -98,19 +65,20 @@ def main(args):
         z_t_init = z_t.clone()
         t = torch.full((z_t.shape[0],), device=device, fill_value=args.t0)
 
-        # Update latent reference for this sample if per-sample latents provided
+        # Get latent for this sample
+        batch_latents = None
         if all_latents is not None and idx < all_latents.shape[0]:
-            wrapped_model._latents = all_latents[idx:idx+1]
+            batch_latents = all_latents[idx:idx+1]
 
-        logits = wrapped_model(z_t, t)
+        logits = model(z_t, t, latents=batch_latents)
         logits[..., tokenizer.mask_token_id] = -1e6
         init_acc = (z_t == logits.argmax(-1)).float().mean().item()
-
+        
         converged = 0
         early_stopped = 0
         for i in range(args.num_denoising_steps):
             with torch.no_grad(), torch.autocast(device.type, dtype=dtype):
-                z_t_next, acc = correction_step(wrapped_model, tokenizer, z_t, t, args.temp, args.tokens_per_step)
+                z_t_next, acc = correction_step(model, tokenizer, z_t, t, args.temp, args.tokens_per_step, latents=batch_latents)
 
                 if acc > max_acc:
                     max_acc = acc

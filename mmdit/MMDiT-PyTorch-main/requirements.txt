@@ -1,3 +1,0 @@
-torch
-einops
-x_transformers
