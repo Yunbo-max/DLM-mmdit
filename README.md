@@ -23,14 +23,19 @@ python -m mmdit_latent.download_models
 python -m mmdit_latent.preprocess_data \
   --dataset Skylion007/openwebtext \
   --max_seq_len 4096 \
-  --latent_dim 32
+  --latent_dim 32 \
+  --device cuda:0,cuda:1  # multi-GPU for faster encoding
 
 # 512 seq len (faster) → mmdit_latent/data_512/
 python -m mmdit_latent.preprocess_data \
   --dataset Skylion007/openwebtext \
   --max_seq_len 512 \
   --latent_dim 32 \
-  --output_dir mmdit_latent/data_512
+  --output_dir mmdit_latent/data_512 \
+  --device cuda:0,cuda:1
+
+# Note: --device cuda:0 for single GPU, cuda:0,cuda:1 for two GPUs
+# If OOM, reduce --batch_size (default 256, try 64 or 32)
 
 # 4. Train
 # 4096 (default):
