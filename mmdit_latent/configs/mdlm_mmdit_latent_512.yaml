@@ -1,6 +1,6 @@
-# File: configs/mdlm_mmdit_latent.yaml
-# MMDiT variant: latent conditioning via joint attention (second modality)
-# Train with max_seq_len=4096 to support generating any length <= 4096
+# File: configs/mdlm_mmdit_latent_512.yaml
+# MMDiT variant with max_seq_len=512 for faster training on shorter text
+# Use this for quick experiments or when generating short text (reviews, captions)
 defaults:
   - logging: default
   - data: owt
@@ -10,43 +10,40 @@ defaults:
 
 # Data configuration
 data:
-  dataset_name: "json"  # Use json dataset
+  dataset_name: "json"
   data_files:
     train: "${data.latent_data_root}/train_data.jsonl"
     validation: "${data.latent_data_root}/validation_data.jsonl"
   latent_data_root: "mmdit_latent/data"
   streaming: false
   pre_tokenize: true
-  max_length: 4096
-  sequence_packing: false  # Disable for latent conditioning
+  max_length: 512
+  sequence_packing: false
 
-# Model with MMDiT latent conditioning
 model:
   type: diffusion
   diffusion_process: mdlm
   use_latent_conditioning: true
-  conditioning_type: "mmdit"  # MMDiT joint attention conditioning
-  latent_dim: 32  # Qwen3-Embedding-8B with dim=32
-  latent_hidden_size: 768  # Hidden dim for latent modality in MMDiT
+  conditioning_type: "mmdit"
+  latent_dim: 32
+  latent_hidden_size: 768
   cluster_size: 0
   qk_rmsnorm: false
-  max_latent_len: 1  # Number of latent tokens
+  max_latent_len: 1
 
-  # Transformer parameters
   hidden_size: 768
   n_blocks: 12
   n_heads: 12
   cond_dim: 768
-  max_seq_len: 4096
+  max_seq_len: 512
   dropout: 0.1
   t_eps: 1e-4
 
-# Training
 training:
   resume: null
   seed: 1
-  train_batch_size: 4  # Smaller batch for 4096 seq len (adjust per GPU memory)
-  eval_batch_size: 4
+  train_batch_size: 32
+  eval_batch_size: 32
   num_train_steps: 1000000
   lr_schedule: cosine
   warmup_steps: 5000

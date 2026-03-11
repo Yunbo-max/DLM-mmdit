@@ -44,4 +44,4 @@ sweep:
   steps_values: [100]
 
 # Output
-output_dir: "results/lsme_yelp/"
+output_dir: "mmdit_latent/results/lsme_yelp/"

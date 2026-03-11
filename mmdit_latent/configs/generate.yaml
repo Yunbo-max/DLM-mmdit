@@ -5,6 +5,8 @@ num_denoising_steps: 128
 min_p: 0.0
 samples_path: samples.pt
 latent_path: null  # Path to .npy or .pt latent file for conditioned generation
+max_length: null   # Override generation length (default: use model's max_seq_len)
+                   # e.g., max_length=128 for short, max_length=4096 for full
 
 training:
   seed: 0

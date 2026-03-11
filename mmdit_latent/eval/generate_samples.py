@@ -56,7 +56,8 @@ def main(args):
                     batch_latents = all_latents[i:i+bs].to(device)
                 else:
                     batch_latents = None
-                z_t = sampler.generate(bs, args.num_denoising_steps, decode=False, show_progress=False, latents=batch_latents)
+                gen_length = args.get("max_length", None)  # None = use model default
+                z_t = sampler.generate(bs, args.num_denoising_steps, max_length=gen_length, decode=False, show_progress=False, latents=batch_latents)
                 samples.append(z_t)
                 pbar.update(bs)
     samples = torch.cat(samples, dim=0).cpu()

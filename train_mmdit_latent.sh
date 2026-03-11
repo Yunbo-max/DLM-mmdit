@@ -2,22 +2,32 @@
 # File: train_mmdit_latent.sh
 # Training script for mmdit_latent (fixed-latent conditioned text diffusion with MMDiT)
 # Uses mmdit_latent/train_latent_dit.py with Hydra config mdlm_mmdit_latent
+#
+# All paths are relative to the repo root (DLM-mmdit/).
+# Copy the entire repo to another machine and run directly.
 set -xeuo pipefail
+
+# Get the repo root directory (where this script lives)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
 
 echo "=========================================="
 echo "MMDiT-Latent Training Script"
 echo "=========================================="
-echo "Fixed-latent conditioned text generation"
-echo "DiT backbone swapped to MMDiT joint attention"
+echo "Working directory: $(pwd)"
 echo "=========================================="
 echo ""
 
 # ============================================================
-# ENVIRONMENT SETUP
+# ENVIRONMENT SETUP (optional: activate venv if it exists)
 # ============================================================
-cd /inspire/hdd/global_user/zhangjiaquan-253108540222/latent/HDLM
-source .venv/bin/activate
-cd /inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM
+if [ -f ".venv/bin/activate" ]; then
+  source .venv/bin/activate
+  echo "Activated .venv"
+elif [ -f "venv/bin/activate" ]; then
+  source venv/bin/activate
+  echo "Activated venv"
+fi
 
 # ============================================================
 # DISTRIBUTED SETUP
@@ -74,11 +84,10 @@ fi
 if [ -z "${MASTER_ADDR:-}" ]; then
   MASTER_ADDR=$(ip route get 1 2>/dev/null | awk '{print $7; exit}' || true)
   if [ -z "${MASTER_ADDR}" ]; then
-    MASTER_ADDR=$(hostname -I | awk '{print $1}' | head -n1)
+    MASTER_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}' | head -n1 || true)
   fi
   if [ -z "${MASTER_ADDR}" ]; then
-    echo "ERROR: Could not determine MASTER_ADDR"
-    exit 1
+    MASTER_ADDR="127.0.0.1"
   fi
 fi
 
@@ -177,14 +186,14 @@ DTYPE="${DTYPE:-bf16}"
 COMPILE="${COMPILE:-true}"
 DATA_WORKERS="${DATA_WORKERS:-8}"
 
-# Config and paths
+# Config and paths — all relative to repo root
 CONFIG_NAME="${CONFIG_NAME:-mdlm_mmdit_latent}"
 RUN_NAME="${RUN_NAME:-mmdit-latent-training}"
-SAVE_DIR="${SAVE_DIR:-/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/saved}"
+SAVE_DIR="${SAVE_DIR:-mmdit_latent/results/checkpoints}"
 RESUME="${RESUME:-null}"
 
 # Model
-LATENT_DIM="${LATENT_DIM:-768}"
+LATENT_DIM="${LATENT_DIM:-32}"
 MODEL_SIZE="${MODEL_SIZE:-small}"  # tiny, small, base, 1B
 
 # Data (override from config if needed)
@@ -197,7 +206,7 @@ export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 export PYTORCH_ALLOC_CONF="expandable_segments:True"
 export WANDB_DISABLED="true"
 export WANDB_MODE="disabled"
-export WANDB_DIR="./output_dir/wandb"
+export WANDB_DIR="mmdit_latent/results/wandb"
 mkdir -p "${WANDB_DIR}"
 
 # NCCL configuration
@@ -207,7 +216,7 @@ export NCCL_ASYNC_ERROR_HANDLING=1
 export NCCL_TIMEOUT=7200
 export NCCL_BLOCKING_WAIT=1
 export NCCL_DEBUG=INFO
-export NCCL_DEBUG_FILE="/tmp/nccl_debug_mmdit_latent_${NODE_RANK}.log"
+export NCCL_DEBUG_FILE="mmdit_latent/results/logs/nccl_debug_${NODE_RANK}.log"
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export TORCH_NCCL_BLOCKING_WAIT=1
 
@@ -259,17 +268,16 @@ echo ""
 echo "Running pre-flight checks..."
 
 # Check GPU availability
-if ! command -v nvidia-smi >/dev/null 2>&1; then
-  echo "ERROR: nvidia-smi not found. CUDA may not be available."
-  exit 1
-fi
+if command -v nvidia-smi >/dev/null 2>&1; then
+  GPU_COUNT=$(nvidia-smi -L 2>/dev/null | wc -l)
+  echo "Found ${GPU_COUNT} GPUs"
 
-GPU_COUNT=$(nvidia-smi -L 2>/dev/null | wc -l)
-echo "Found ${GPU_COUNT} GPUs"
-
-if [ "${NPROC_PER_NODE}" -gt "${GPU_COUNT}" ]; then
-  echo "ERROR: NPROC_PER_NODE (${NPROC_PER_NODE}) > available GPUs (${GPU_COUNT})"
-  exit 1
+  if [ "${NPROC_PER_NODE}" -gt "${GPU_COUNT}" ]; then
+    echo "ERROR: NPROC_PER_NODE (${NPROC_PER_NODE}) > available GPUs (${GPU_COUNT})"
+    exit 1
+  fi
+else
+  echo "WARNING: nvidia-smi not found"
 fi
 
 # Check config file
@@ -308,10 +316,10 @@ echo ""
 # CREATE OUTPUT DIRECTORIES
 # ============================================================
 mkdir -p "${SAVE_DIR}"
-mkdir -p train_logs
+mkdir -p mmdit_latent/results/logs
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-LOG_FILE="train_logs/train_mmdit_latent_${TIMESTAMP}_node${NODE_RANK}.log"
+LOG_FILE="mmdit_latent/results/logs/train_${TIMESTAMP}_node${NODE_RANK}.log"
 
 # ============================================================
 # BUILD HYDRA OVERRIDES
@@ -389,16 +397,14 @@ echo ""
 echo "Summary:"
 echo "  Exit code: ${EXIT_CODE}"
 echo "  Log file: ${LOG_FILE}"
-echo "  NCCL debug: /tmp/nccl_debug_mmdit_latent_${NODE_RANK}.log"
 echo "  Checkpoints: ${SAVE_DIR}/${RUN_NAME}/"
 echo ""
 
 if [ $EXIT_CODE -ne 0 ]; then
   echo "Troubleshooting:"
   echo "  1. Check log file: ${LOG_FILE}"
-  echo "  2. Check NCCL debug: /tmp/nccl_debug_mmdit_latent_${NODE_RANK}.log"
-  echo "  3. Look for errors: grep -E 'ERROR|NaN' ${LOG_FILE}"
-  echo "  4. Resume from checkpoint:"
+  echo "  2. Look for errors: grep -E 'ERROR|NaN' ${LOG_FILE}"
+  echo "  3. Resume from checkpoint:"
   echo "     RESUME=${SAVE_DIR}/${RUN_NAME}/latest bash train_mmdit_latent.sh"
   echo ""
 fi

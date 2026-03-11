@@ -26,4 +26,4 @@ geometry:
   n_samples: 5
 
 # Output
-output_dir: "results/eval/"
+output_dir: "mmdit_latent/results/eval/"

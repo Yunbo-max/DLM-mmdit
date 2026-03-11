@@ -1,23 +1,28 @@
 #!/bin/bash
 # File: sample_mmdit_latent.sh
 # Sampling & eval script for mmdit_latent (fixed-latent conditioned text generation)
-# Uses mmdit_latent/sampling.py samplers (MDLMSampler, GiddSampler, HDLMSampler)
+# All paths relative to repo root — copy to any machine and run directly.
 set -xeuo pipefail
+
+# Get the repo root directory (where this script lives)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
 
 echo "=========================================="
 echo "MMDiT-Latent Sampling & Evaluation Script"
 echo "=========================================="
-echo "Fixed-latent conditioned text generation"
-echo "using mmdit_latent checkpoints."
+echo "Working directory: $(pwd)"
 echo "=========================================="
 echo ""
 
 # ============================================================
 # ENVIRONMENT SETUP
 # ============================================================
-cd /inspire/hdd/global_user/zhangjiaquan-253108540222/latent/HDLM
-source .venv/bin/activate
-cd /inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM
+if [ -f ".venv/bin/activate" ]; then
+  source .venv/bin/activate
+elif [ -f "venv/bin/activate" ]; then
+  source venv/bin/activate
+fi
 
 # ============================================================
 # CONFIGURATION
@@ -26,14 +31,13 @@ cd /inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM
 # Checkpoint (REQUIRED)
 CHECKPOINT="${CHECKPOINT:-}"
 if [ -z "${CHECKPOINT}" ]; then
-  SAVE_DIR="${SAVE_DIR:-/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/saved}"
-  RUN_NAME="${RUN_NAME:-mmdit-latent}"
+  SAVE_DIR="${SAVE_DIR:-mmdit_latent/results/checkpoints}"
+  RUN_NAME="${RUN_NAME:-mmdit-latent-training}"
   CKPT_DIR="${SAVE_DIR}/${RUN_NAME}"
 
   if [ -d "${CKPT_DIR}/latest" ]; then
     CHECKPOINT="${CKPT_DIR}/latest"
   elif [ -d "${CKPT_DIR}" ]; then
-    # Find most recent checkpoint directory with model.pt
     CHECKPOINT=$(find "${CKPT_DIR}" -name "model.pt" -printf '%h\n' 2>/dev/null | sort | tail -1 || true)
   fi
 
@@ -54,10 +58,11 @@ NUM_SAMPLES="${NUM_SAMPLES:-100}"
 BATCH_SIZE="${BATCH_SIZE:-16}"
 NUM_DENOISING_STEPS="${NUM_DENOISING_STEPS:-128}"
 MIN_P="${MIN_P:-0.0}"
+MAX_LENGTH="${MAX_LENGTH:-}"  # Override generation length (e.g., 128, 512, 4096)
 
-# Output
+# Output — all relative
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="${OUTPUT_DIR:-/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/saved/samples_mmdit_latent/${TIMESTAMP}}"
+OUTPUT_DIR="${OUTPUT_DIR:-mmdit_latent/results/samples/${TIMESTAMP}}"
 SAMPLES_PATH="${OUTPUT_DIR}/samples.pt"
 
 # PPL evaluation
@@ -105,7 +110,6 @@ export WANDB_MODE="disabled"
 echo ""
 echo "Running pre-flight checks..."
 
-# Check checkpoint directory
 if [ ! -d "${CHECKPOINT}" ]; then
   echo "ERROR: Checkpoint directory not found: ${CHECKPOINT}"
   exit 1
@@ -116,7 +120,6 @@ if [ ! -f "${CHECKPOINT}/model.pt" ]; then
 fi
 echo "Checkpoint: ${CHECKPOINT}"
 
-# Check latent path if provided
 if [ -n "${LATENT_PATH}" ]; then
   if [ ! -f "${LATENT_PATH}" ]; then
     echo "ERROR: Latent file not found: ${LATENT_PATH}"
@@ -124,7 +127,7 @@ if [ -n "${LATENT_PATH}" ]; then
   fi
   echo "Latent path: ${LATENT_PATH}"
 else
-  echo "Latent path: (none — model will use null_latent)"
+  echo "Latent path: (none - model will use null_latent)"
 fi
 
 python -c "import torch; print(f'PyTorch {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
@@ -139,6 +142,7 @@ echo "  Num samples:     ${NUM_SAMPLES}"
 echo "  Batch size:      ${BATCH_SIZE}"
 echo "  Denoising steps: ${NUM_DENOISING_STEPS}"
 echo "  Min-p:           ${MIN_P}"
+echo "  Max length:      ${MAX_LENGTH:-model default}"
 echo "  Output:          ${OUTPUT_DIR}"
 echo "  Run PPL eval:    ${RUN_PPL}"
 echo "=========================================="
@@ -148,8 +152,8 @@ echo ""
 # CREATE OUTPUT DIRECTORIES
 # ============================================================
 mkdir -p "${OUTPUT_DIR}"
-mkdir -p sample_logs
-LOG_FILE="sample_logs/sample_mmdit_latent_${TIMESTAMP}.log"
+mkdir -p mmdit_latent/results/logs
+LOG_FILE="mmdit_latent/results/logs/sample_${TIMESTAMP}.log"
 
 # ============================================================
 # STEP 1: GENERATE SAMPLES
@@ -157,7 +161,6 @@ LOG_FILE="sample_logs/sample_mmdit_latent_${TIMESTAMP}.log"
 echo "Step 1: Generating ${NUM_SAMPLES} samples..."
 echo ""
 
-# Build hydra overrides for generate_samples.py
 GENERATE_CMD="python mmdit_latent/eval/generate_samples.py \
   path=${CHECKPOINT} \
   batch_size=${BATCH_SIZE} \
@@ -166,9 +169,12 @@ GENERATE_CMD="python mmdit_latent/eval/generate_samples.py \
   min_p=${MIN_P} \
   samples_path=${SAMPLES_PATH}"
 
-# Add latent_path if provided
 if [ -n "${LATENT_PATH}" ]; then
   GENERATE_CMD="${GENERATE_CMD} latent_path=${LATENT_PATH}"
+fi
+
+if [ -n "${MAX_LENGTH}" ]; then
+  GENERATE_CMD="${GENERATE_CMD} max_length=${MAX_LENGTH}"
 fi
 
 set +e
@@ -207,7 +213,6 @@ set -e
 if [ $DECODE_EXIT -eq 0 ] && [ -f "${DECODED_PATH}" ]; then
   echo "Decoded to: ${DECODED_PATH}"
 
-  # Show first few samples
   echo ""
   echo "--- First 5 samples ---"
   python3 << PREVIEW_EOF
@@ -275,9 +280,6 @@ echo "  Samples (tokens):  ${SAMPLES_PATH}"
 [ -f "${OUTPUT_DIR}/samples.json" ] && echo "  Samples (text):    ${OUTPUT_DIR}/samples.json"
 [ -f "${OUTPUT_DIR}/metrics_ppl.json" ] && echo "  PPL metrics:       ${OUTPUT_DIR}/metrics_ppl.json"
 echo "  Log:               ${LOG_FILE}"
-echo ""
-echo "To re-run PPL eval only:"
-echo "  SAMPLES_PATH=${SAMPLES_PATH} bash eval_samples.sh"
 echo "=========================================="
 
 exit 0
