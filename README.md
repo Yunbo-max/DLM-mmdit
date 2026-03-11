@@ -17,15 +17,31 @@ python -m mmdit_latent.download_models
 #            mmdit_latent/data/models/Qwen3-Embedding-8B/
 
 # 3. Preprocess data (Option C: chunk-based with local models)
+#    Choose 4096 (full document) or 512 (fast experiments):
+
+# 4096 seq len (default) → mmdit_latent/data/
 python -m mmdit_latent.preprocess_data \
   --dataset Skylion007/openwebtext \
   --max_seq_len 4096 \
   --latent_dim 32
 
-# 4. Train (4096 max_seq_len, auto GPU/batch detection)
+# 512 seq len (faster) → mmdit_latent/data_512/
+python -m mmdit_latent.preprocess_data \
+  --dataset Skylion007/openwebtext \
+  --max_seq_len 512 \
+  --latent_dim 32 \
+  --output_dir mmdit_latent/data_512
+
+# 4. Train
+# 4096 (default):
 bash train_mmdit_latent.sh
 
-# 5. Sample (any length <= 4096)
+# 512:
+CONFIG_NAME=mdlm_mmdit_latent_512 \
+LATENT_DATA_ROOT=mmdit_latent/data_512 \
+  bash train_mmdit_latent.sh
+
+# 5. Sample (any length <= max_seq_len)
 CHECKPOINT=mmdit_latent/results/checkpoints/mmdit-latent-training/latest \
   bash sample_mmdit_latent.sh
 
