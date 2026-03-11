@@ -172,28 +172,29 @@ def process_and_save(chunk_stream, output_dir, encoder_name="Qwen/Qwen3-Embeddin
     shard_dir = output_dir / "latent_shards"
     shard_dir.mkdir(parents=True, exist_ok=True)
 
-    # Parse device(s) — supports "cuda:0", "cuda:0,1", "cuda" etc.
-    devices = []
+    # Parse device — supports "cuda:0", "cuda:0,cuda:1", "cuda"
     if "," in device:
-        devices = [d.strip() for d in device.split(",")]
-    elif device.startswith("cuda") and ":" not in device:
-        devices = [device]
+        device_ids = [d.strip() for d in device.split(",")]
+        primary_device = device_ids[0]
     else:
-        devices = [device]
+        device_ids = [device]
+        primary_device = device
 
-    print(f"Loading encoder: {encoder_name} (output dim={latent_dim}, devices={devices})")
+    print(f"Loading encoder: {encoder_name} (output dim={latent_dim}, devices={device_ids})")
     model = SentenceTransformer(
         encoder_name,
         trust_remote_code=True,
         truncate_dim=latent_dim,
+        device=primary_device,
     )
     model.max_seq_length = max_text_tokens
 
-    # Multi-GPU: use SentenceTransformer's built-in data-parallel pool
-    pool = None
-    if len(devices) > 1:
-        pool = model.start_multi_process_pool(devices)
-        print(f"  Multi-GPU encoding pool started: {devices}")
+    # Multi-GPU: wrap the underlying transformer in DataParallel
+    if len(device_ids) > 1:
+        import torch.nn as nn
+        gpu_ids = [int(d.split(":")[-1]) for d in device_ids]
+        model[0].auto_model = nn.DataParallel(model[0].auto_model, device_ids=gpu_ids)
+        print(f"  DataParallel across GPUs: {gpu_ids}")
 
     train_path = output_dir / "train_data.jsonl"
     val_path = output_dir / "validation_data.jsonl"
@@ -223,20 +224,13 @@ def process_and_save(chunk_stream, output_dir, encoder_name="Qwen/Qwen3-Embeddin
         nonlocal total_processed, shard_latents
         texts = [c["text"] for c in chunks_batch]
 
-        if pool is not None:
-            embeddings = model.encode_multi_process(
-                texts, pool,
-                batch_size=len(texts) // len(devices) + 1,
-                normalize_embeddings=True,
-            )
-        else:
-            embeddings = model.encode(
-                texts,
-                batch_size=len(texts),
-                show_progress_bar=False,
-                normalize_embeddings=True,
-                device=devices[0],
-            )
+        embeddings = model.encode(
+            texts,
+            batch_size=len(texts),
+            show_progress_bar=False,
+            normalize_embeddings=True,
+            device=primary_device,
+        )
 
         for chunk, emb in zip(chunks_batch, embeddings):
             idx_in_shard = len(shard_latents)
@@ -276,9 +270,6 @@ def process_and_save(chunk_stream, output_dir, encoder_name="Qwen/Qwen3-Embeddin
     # Flush last partial shard
     flush_shard()
 
-    # Cleanup multi-GPU pool
-    if pool is not None:
-        model.stop_multi_process_pool(pool)
     pbar.close()
 
     train_f.close()
