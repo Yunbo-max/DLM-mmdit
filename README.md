@@ -118,17 +118,23 @@ This saves `bert-base-uncased` and `Qwen3-Embedding-8B` into `mmdit_latent/data/
 # Default: 4096-token chunks → mmdit_latent/data/
 python -m mmdit_latent.preprocess_data \
   --dataset Skylion007/openwebtext \
-  --max_seq_len 4096
+  --max_seq_len 4096 \
+  --device cuda:0,cuda:1 \
+  --batch_size 64
 
 # 512-token chunks for faster training
 python -m mmdit_latent.preprocess_data \
   --dataset Skylion007/openwebtext \
   --max_seq_len 512 \
-  --output_dir mmdit_latent/data_512
+  --output_dir mmdit_latent/data_512 \
+  --device cuda:0,cuda:1 \
+  --batch_size 64
 
 # From local text file
 python -m mmdit_latent.preprocess_data \
-  --text_file /path/to/texts.txt
+  --text_file /path/to/texts.txt \
+  --device cuda:0,cuda:1 \
+  --batch_size 64
 
 # Limit for testing
 python -m mmdit_latent.preprocess_data \
