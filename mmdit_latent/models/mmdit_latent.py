@@ -24,9 +24,8 @@ from .dit import (
 )
 from .mmdit_block import MMDiTBlock, RMSNorm, has_hyper_connections
 
-# Import expand/reduce stream functions if hyper-connections available
-if has_hyper_connections:
-    from hyper_connections.mHCv2 import get_expand_reduce_stream_functions
+# Import expand/reduce stream functions from local vendored copy
+from .hyper_connections import get_expand_reduce_stream_functions
 
 
 class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixin):

@@ -19,15 +19,12 @@ from einops.layers.torch import Rearrange
 # Try importing external packages (same as latentDLM_mmdit)
 # ---------------------------------------------------------------------------
 
-try:
-    from hyper_connections.mHCv2 import (
-        ManifoldConstrainedHyperConnections,
-        Residual as HCResidual,
-        get_expand_reduce_stream_functions,
-    )
-    has_hyper_connections = True
-except ImportError:
-    has_hyper_connections = False
+from .hyper_connections import (
+    ManifoldConstrainedHyperConnections,
+    Residual as HCResidual,
+    get_expand_reduce_stream_functions,
+)
+has_hyper_connections = True
 
 # ---------------------------------------------------------------------------
 # helpers
