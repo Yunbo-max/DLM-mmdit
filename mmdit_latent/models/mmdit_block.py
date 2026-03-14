@@ -1,8 +1,8 @@
 """
-Self-contained MMDiT building blocks for N-modality joint attention.
+MMDiT building blocks for N-modality joint attention.
 
-Inlines all dependencies (no external mmdit, x_transformers, or hyper_connections packages).
-Based on mmdit-0.3.0/mmdit/mmdit_pytorch.py and mmdit_generalized_pytorch.py.
+Uses external mmdit and hyper_connections packages when available,
+falls back to inline implementations when not installed.
 """
 
 from __future__ import annotations
@@ -14,6 +14,20 @@ from torch.nn import Module, ModuleList
 
 from einops import rearrange, pack, unpack
 from einops.layers.torch import Rearrange
+
+# ---------------------------------------------------------------------------
+# Try importing external packages (same as latentDLM_mmdit)
+# ---------------------------------------------------------------------------
+
+try:
+    from hyper_connections.mHCv2 import (
+        ManifoldConstrainedHyperConnections,
+        Residual as HCResidual,
+        get_expand_reduce_stream_functions,
+    )
+    has_hyper_connections = True
+except ImportError:
+    has_hyper_connections = False
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -76,65 +90,16 @@ class FeedForward(Module):
 
 
 # ---------------------------------------------------------------------------
-# Residual (inline — simple identity residual)
+# Residual (inline fallback)
 # ---------------------------------------------------------------------------
 
 class Residual(Module):
     """Simple residual wrapper: returns (x, add_residual_fn)."""
-    def __init__(self, num_streams=1, dim=None):
+    def __init__(self, *args, **kwargs):
         super().__init__()
-        # num_streams / dim args accepted for API compat but unused in simple mode
 
     def forward(self, x):
         return x, lambda res: x + res
-
-
-class HyperConnections(Module):
-    """
-    Multi-stream residual connections (from "Hyper-Connections" paper).
-
-    Instead of a single residual stream x + f(x), maintains `num_streams`
-    parallel residual streams. At each layer, the streams are mixed via
-    learned weights before being passed to the sub-layer, and the output
-    is distributed back into the streams via learned gates.
-
-    This dramatically improves gradient flow in deep networks.
-
-    API-compatible with Residual: forward(x) -> (input_to_sublayer, merge_fn)
-    where x has shape (B, N, num_streams * dim) — streams packed along last dim.
-    """
-    def __init__(self, num_streams=2, dim=None):
-        super().__init__()
-        assert dim is not None, "HyperConnections requires dim"
-        self.num_streams = num_streams
-        self.dim = dim
-
-        # alpha: how to mix streams into sub-layer input (num_streams,)
-        # beta: how to distribute sub-layer output back into streams (num_streams,)
-        self.alpha = nn.Parameter(torch.ones(num_streams) / num_streams)
-        self.beta = nn.Parameter(torch.ones(num_streams) / num_streams)
-
-    def forward(self, x):
-        """
-        x: (B, N, dim) — single-stream input (we manage streams internally).
-        Returns: (input_to_sublayer, merge_fn)
-        """
-        # x is the current hidden state (B, N, dim)
-        # Store for residual
-        residual = x
-
-        def merge_fn(sublayer_out):
-            # sublayer_out: (B, N, dim) — output of attention or FFN
-            # Weighted combination: each stream gets residual * alpha_i + output * beta_i
-            # With num_streams, we effectively have:
-            #   stream_i = alpha_i * residual + beta_i * sublayer_out
-            # Then sum all streams: sum_i(alpha_i * residual + beta_i * sublayer_out)
-            # = sum(alpha) * residual + sum(beta) * sublayer_out
-            alpha_sum = self.alpha.sum()
-            beta_sum = self.beta.sum()
-            return alpha_sum * residual + beta_sum * sublayer_out
-
-        return x, merge_fn
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +137,7 @@ class AdaptiveLayerNorm(Module):
 
 
 # ---------------------------------------------------------------------------
-# JointAttention  (from mmdit_pytorch.py:48-165, with F.scaled_dot_product_attention)
+# JointAttention  (from mmdit_pytorch.py, with F.scaled_dot_product_attention)
 # ---------------------------------------------------------------------------
 
 class JointAttention(Module):
@@ -248,13 +213,7 @@ class JointAttention(Module):
 
         q, k, v = all_qkvs[0], all_qkvs[1], all_qkvs[2]
 
-        # Build boolean attention mask: (B, 1, 1, N_total) for broadcasting
-        attn_mask = all_masks.unsqueeze(1).unsqueeze(2)  # (B, 1, 1, N_total)
-        # We need key mask: positions where key is valid
-        # For SDPA: True means attend, but we pass it as attn_mask
-        # Actually SDPA bool mask: True = attend. Shape (B, 1, N_q, N_kv)
-        # Since all queries attend to valid keys: expand key mask
-        attn_mask = all_masks[:, None, None, :]  # (B, 1, 1, N_kv) — broadcast over heads and queries
+        attn_mask = all_masks[:, None, None, :]  # (B, 1, 1, N_kv)
 
         out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
         out = self.attn_dropout(out)
@@ -274,8 +233,15 @@ class JointAttention(Module):
 
 
 # ---------------------------------------------------------------------------
-# MMDiTBlock  (from mmdit_generalized_pytorch.py:81-204)
+# MMDiTBlock  (from mmdit_generalized_pytorch.py, with hyper-connections)
 # ---------------------------------------------------------------------------
+
+def _get_residual_class(num_residual_streams):
+    """Return the appropriate residual class based on availability."""
+    if num_residual_streams > 1 and has_hyper_connections:
+        return ManifoldConstrainedHyperConnections
+    return Residual
+
 
 class MMDiTBlock(Module):
     def __init__(
@@ -294,13 +260,10 @@ class MMDiTBlock(Module):
         self.num_modalities = len(dim_modalities)
         self.dim_modalities = dim_modalities
 
-        # Residual connections — simple (1) or hyper-connections (>1)
-        if num_residual_streams > 1:
-            ResidualCls = lambda dim: HyperConnections(num_streams=num_residual_streams, dim=dim)
-        else:
-            ResidualCls = lambda dim: Residual(dim=dim)
-        self.attn_residual_fns = ModuleList([ResidualCls(d) for d in dim_modalities])
-        self.ff_residual_fns = ModuleList([ResidualCls(d) for d in dim_modalities])
+        # Residual connections — simple or hyper-connections
+        residual_klass = _get_residual_class(num_residual_streams)
+        self.attn_residual_fns = ModuleList([residual_klass(num_residual_streams, dim=d) for d in dim_modalities])
+        self.ff_residual_fns = ModuleList([residual_klass(num_residual_streams, dim=d) for d in dim_modalities])
 
         # Optional time conditioning → post-branch gammas
         has_cond = exists(dim_cond)

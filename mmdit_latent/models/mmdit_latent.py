@@ -3,6 +3,9 @@ MMDiT-based model with latent conditioning as a second modality in joint attenti
 
 Instead of conditioning via AdaLN additive modulation (baseline approach), the latent
 becomes a second modality in MMDiT's joint attention mechanism.
+
+When hyper-connections package is installed, uses ManifoldConstrainedHyperConnections
+for multi-stream residual connections (matching latentDLM_mmdit architecture).
 """
 
 import math
@@ -19,7 +22,11 @@ from .dit import (
     DDitFinalLayer,
     modulate_fused,
 )
-from .mmdit_block import MMDiTBlock
+from .mmdit_block import MMDiTBlock, RMSNorm, has_hyper_connections
+
+# Import expand/reduce stream functions if hyper-connections available
+if has_hyper_connections:
+    from hyper_connections.mHCv2 import get_expand_reduce_stream_functions
 
 
 class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixin):
@@ -49,11 +56,26 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
         dropout = config.get("dropout", 0.1)
         max_seq_len = config.get("max_seq_len", 512)
         qk_rmsnorm = config.get("qk_rmsnorm", True)
-        num_residual_streams = config.get("num_residual_streams", 1)
+        num_residual_streams = config.get("num_residual_streams", 2)
         latent_hidden_size = config.get("latent_hidden_size", hidden_size)
 
         self.hidden_size = hidden_size
         self.latent_hidden_size = latent_hidden_size
+        self.num_residual_streams = num_residual_streams
+
+        # --- Stream expand/reduce for hyper-connections ---
+        if num_residual_streams > 1 and has_hyper_connections:
+            self.expand_streams, self.reduce_streams = get_expand_reduce_stream_functions(
+                num_residual_streams, disable=False
+            )
+            self.use_hyper_connections = True
+            print(f"Using ManifoldConstrainedHyperConnections with {num_residual_streams} streams")
+        else:
+            self.expand_streams = nn.Identity()
+            self.reduce_streams = nn.Identity()
+            self.use_hyper_connections = False
+            if num_residual_streams > 1:
+                print("WARNING: hyper-connections package not installed, falling back to simple residuals")
 
         # --- Text pathway ---
         self.vocab_embed = EmbeddingLayer(hidden_size, self.rounded_vocab_size)
@@ -87,6 +109,10 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
                 num_residual_streams=num_residual_streams,
             ))
         self.blocks = nn.ModuleList(blocks)
+
+        # --- Final norms (matching external MMDiT) ---
+        self.text_final_norm = RMSNorm(hidden_size)
+        self.latent_final_norm = RMSNorm(latent_hidden_size)
 
         # --- Output layer (text only) ---
         self.output_layer = DDitFinalLayer(
@@ -133,8 +159,12 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
 
         # --- Build masks ---
         text_mask = attention_mask.bool() if attention_mask is not None else None
-        # Latent tokens are always valid
         latent_mask = torch.ones(B, latent_tokens.shape[1], device=indices.device, dtype=torch.bool)
+
+        # --- Expand streams for hyper-connections ---
+        # mHCv2 expand: (B, N, D) -> (B, N, S, D)
+        text_tokens = self.expand_streams(text_tokens)
+        latent_tokens = self.expand_streams(latent_tokens)
 
         # --- Run through MMDiT blocks ---
         for block in self.blocks:
@@ -143,6 +173,14 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
                 modality_masks=(text_mask, latent_mask),
                 time_cond=c,
             )
+
+        # --- Reduce streams ---
+        # mHCv2 reduce: (B, N, S, D) -> (B, N, D) via sum
+        text_tokens = self.reduce_streams(text_tokens)
+        latent_tokens = self.reduce_streams(latent_tokens)
+
+        # --- Final norms ---
+        text_tokens = self.text_final_norm(text_tokens)
 
         # --- Output (text only, discard latent) ---
         x1 = self.output_layer(text_tokens, c)

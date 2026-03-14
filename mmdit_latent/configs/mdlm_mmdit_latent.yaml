@@ -29,7 +29,8 @@ model:
   latent_dim: 32  # Qwen3-Embedding-8B with dim=32
   latent_hidden_size: ${model.hidden_size}  # Match model hidden dim
   cluster_size: 0
-  qk_rmsnorm: false
+  num_residual_streams: 2
+  qk_rmsnorm: true
   max_latent_len: 1  # Number of latent tokens
   max_seq_len: 4096
   t_eps: 1e-4
