@@ -14,7 +14,7 @@ data:
   data_files:
     train: "${data.latent_data_root}/train_data.jsonl"
     validation: "${data.latent_data_root}/validation_data.jsonl"
-  latent_data_root: "mmdit_latent/data"
+  latent_data_root: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data"
   streaming: false
   pre_tokenize: true
   max_length: 512

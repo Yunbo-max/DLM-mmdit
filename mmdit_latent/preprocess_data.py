@@ -106,16 +106,22 @@ def chunk_document(text, tokenizer, max_seq_len, min_chunk_tokens=32):
 def stream_chunks_from_dataset(dataset_name, tokenizer, max_seq_len,
                                 split="train", max_docs=None,
                                 cache_dir="./data", text_key="text",
-                                min_chunk_tokens=32):
-    """Stream document chunks from a HuggingFace dataset."""
+                                min_chunk_tokens=32,
+                                worker_rank=0, num_workers=1):
+    """Stream document chunks from a HuggingFace dataset.
+
+    For multi-GPU: set worker_rank and num_workers to split docs across processes.
+    E.g. worker_rank=0, num_workers=2 → processes even-indexed docs.
+    """
     from datasets import load_dataset
 
-    print(f"Loading dataset: {dataset_name} (split={split})")
+    print(f"Loading dataset: {dataset_name} (split={split}, worker {worker_rank}/{num_workers})")
     ds = load_dataset(dataset_name, split=split, cache_dir=cache_dir,
                       trust_remote_code=True)
 
     doc_count = 0
     chunk_count = 0
+    global_doc_idx = 0
     for i in tqdm(range(len(ds)), desc="Chunking documents"):
         if max_docs and doc_count >= max_docs:
             break
@@ -125,6 +131,12 @@ def stream_chunks_from_dataset(dataset_name, tokenizer, max_seq_len,
         if len(text.split()) < 5:
             continue
 
+        # Split docs across workers
+        if global_doc_idx % num_workers != worker_rank:
+            global_doc_idx += 1
+            continue
+        global_doc_idx += 1
+
         chunks = chunk_document(text, tokenizer, max_seq_len, min_chunk_tokens)
         for chunk in chunks:
             yield chunk
@@ -132,7 +144,7 @@ def stream_chunks_from_dataset(dataset_name, tokenizer, max_seq_len,
 
         doc_count += 1
 
-    print(f"Processed {doc_count} documents → {chunk_count} chunks")
+    print(f"Processed {doc_count} documents → {chunk_count} chunks (worker {worker_rank}/{num_workers})")
 
 
 def stream_chunks_from_file(text_file, tokenizer, max_seq_len,
@@ -172,29 +184,16 @@ def process_and_save(chunk_stream, output_dir, encoder_name="Qwen/Qwen3-Embeddin
     shard_dir = output_dir / "latent_shards"
     shard_dir.mkdir(parents=True, exist_ok=True)
 
-    # Parse device — supports "cuda:0", "cuda:0,cuda:1", "cuda"
-    if "," in device:
-        device_ids = [d.strip() for d in device.split(",")]
-        primary_device = device_ids[0]
-    else:
-        device_ids = [device]
-        primary_device = device
-
-    print(f"Loading encoder: {encoder_name} (output dim={latent_dim}, devices={device_ids})")
+    print(f"Loading encoder: {encoder_name} (output dim={latent_dim}, device={device})")
+    model_kwargs = {"torch_dtype": torch.float16}
     model = SentenceTransformer(
         encoder_name,
         trust_remote_code=True,
         truncate_dim=latent_dim,
-        device=primary_device,
+        device=device,
+        model_kwargs=model_kwargs,
     )
     model.max_seq_length = max_text_tokens
-
-    # Multi-GPU: wrap the underlying transformer in DataParallel
-    if len(device_ids) > 1:
-        import torch.nn as nn
-        gpu_ids = [int(d.split(":")[-1]) for d in device_ids]
-        model[0].auto_model = nn.DataParallel(model[0].auto_model, device_ids=gpu_ids)
-        print(f"  DataParallel across GPUs: {gpu_ids}")
 
     train_path = output_dir / "train_data.jsonl"
     val_path = output_dir / "validation_data.jsonl"
@@ -229,7 +228,7 @@ def process_and_save(chunk_stream, output_dir, encoder_name="Qwen/Qwen3-Embeddin
             batch_size=len(texts),
             show_progress_bar=False,
             normalize_embeddings=True,
-            device=primary_device,
+            device=device,
         )
 
         for chunk, emb in zip(chunks_batch, embeddings):
@@ -344,6 +343,12 @@ def main():
     parser.add_argument("--device", type=str, default="cuda",
                         help="Device for encoding")
 
+    # Multi-GPU via separate processes (no NCCL needed)
+    parser.add_argument("--worker_rank", type=int, default=0,
+                        help="Worker rank for multi-GPU (0-indexed)")
+    parser.add_argument("--num_workers", type=int, default=1,
+                        help="Total number of workers for multi-GPU")
+
     args = parser.parse_args()
 
     if args.dataset is None and args.text_file is None:
@@ -371,6 +376,7 @@ def main():
             split=args.split, max_docs=args.max_docs,
             cache_dir=args.cache_dir, text_key=args.text_key,
             min_chunk_tokens=args.min_chunk_tokens,
+            worker_rank=args.worker_rank, num_workers=args.num_workers,
         )
 
     # Process and save

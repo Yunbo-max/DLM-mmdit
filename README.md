@@ -19,22 +19,32 @@ python -m mmdit_latent.download_models
 # 3. Preprocess data (Option C: chunk-based with local models)
 #    Choose 4096 (full document) or 512 (fast experiments):
 
-# 4096 seq len (default) → mmdit_latent/data/
-python -m mmdit_latent.preprocess_data \
+# 4096 seq len — single GPU:
+CUDA_VISIBLE_DEVICES=0 python -m mmdit_latent.preprocess_data \
   --dataset Skylion007/openwebtext \
   --max_seq_len 4096 \
   --latent_dim 32 \
-  --device cuda:0,cuda:1  # multi-GPU for faster encoding
+  --batch_size 64
 
-# 512 seq len (faster) → mmdit_latent/data_512/
-python -m mmdit_latent.preprocess_data \
+# 4096 seq len — two GPUs (2x faster, no NCCL needed):
+# Terminal 1:
+CUDA_VISIBLE_DEVICES=0 python -m mmdit_latent.preprocess_data \
   --dataset Skylion007/openwebtext \
-  --max_seq_len 512 \
-  --latent_dim 32 \
-  --output_dir mmdit_latent/data_512 \
-  --device cuda:0,cuda:1
+  --max_seq_len 4096 --batch_size 64 \
+  --worker_rank 0 --num_workers 2 \
+  --output_dir mmdit_latent/data_part0
 
-# Note: --device cuda:0 for single GPU, cuda:0,cuda:1 for two GPUs
+# Terminal 2:
+CUDA_VISIBLE_DEVICES=1 python -m mmdit_latent.preprocess_data \
+  --dataset Skylion007/openwebtext \
+  --max_seq_len 4096 --batch_size 64 \
+  --worker_rank 1 --num_workers 2 \
+  --output_dir mmdit_latent/data_part1
+
+# Then merge: python -m mmdit_latent.merge_shards \
+#   --inputs mmdit_latent/data_part0 mmdit_latent/data_part1 \
+#   --output mmdit_latent/data
+
 # If OOM, reduce --batch_size (default 256, try 64 or 32)
 
 # 4. Train
@@ -116,24 +126,21 @@ This saves `bert-base-uncased` and `Qwen3-Embedding-8B` into `mmdit_latent/data/
 
 ```bash
 # Default: 4096-token chunks → mmdit_latent/data/
-python -m mmdit_latent.preprocess_data \
+CUDA_VISIBLE_DEVICES=0 python -m mmdit_latent.preprocess_data \
   --dataset Skylion007/openwebtext \
   --max_seq_len 4096 \
-  --device cuda:0,cuda:1 \
   --batch_size 64
 
 # 512-token chunks for faster training
-python -m mmdit_latent.preprocess_data \
+CUDA_VISIBLE_DEVICES=1 python -m mmdit_latent.preprocess_data \
   --dataset Skylion007/openwebtext \
   --max_seq_len 512 \
   --output_dir mmdit_latent/data_512 \
-  --device cuda:0,cuda:1 \
   --batch_size 64
 
 # From local text file
 python -m mmdit_latent.preprocess_data \
   --text_file /path/to/texts.txt \
-  --device cuda:0,cuda:1 \
   --batch_size 64
 
 # Limit for testing

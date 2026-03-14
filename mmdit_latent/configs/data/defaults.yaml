@@ -1,10 +1,10 @@
 test_size: 100000
 num_workers: 4
-tokenizer_name: mmdit_latent/data/models/bert-base-uncased
+tokenizer_name: /inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/models/bert-base-uncased
 pre_tokenize: false
 sequence_packing: false
 max_add_padding: 0
 trust_remote_code: True
 dataset_subset: null
-cache_dir: mmdit_latent/data/cache
+cache_dir: /inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/cache
 split_sequences: False
