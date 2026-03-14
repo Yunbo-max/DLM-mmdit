@@ -42,12 +42,12 @@ training:
   eval_batch_size: 4
   num_train_steps: 1000000
   lr_schedule: cosine
-  warmup_steps: 5000
+  warmup_steps: 2000
   low_discrepancy_sampling: true
   dtype: bf16
-  compile_model: true
+  compile_model: false
 
 loss:
-  loss_type: mdlm
+  loss_type: simple_ce
   loss_scale: 1.0
   reduction: tokenmean

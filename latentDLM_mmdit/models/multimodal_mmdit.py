@@ -20,8 +20,9 @@ try:
 except ImportError as e:
     print(f"✗ Error importing MMDiT: {e}")
     print("Make sure mmdit_generalized_pytorch.py is in your Python path")
+    print("⚠ Continuing without external MMDiT - will use stub if available")
     has_mmdit = False
-    raise ImportError("MMDiT package not found. Please install it.")
+    MMDiT = None
 
 
 class TimestepEmbedder(nn.Module):
@@ -88,13 +89,13 @@ class TextEncoder(nn.Module):
 class LatentEncoder(nn.Module):
     def __init__(self, latent_dim, hidden_size, max_latent_len=1):
         super().__init__()
-        # Must match the trained checkpoint: projection with LayerNorm inside
-        self.projection = nn.Sequential(
+        self.norm = nn.LayerNorm(latent_dim)
+        self.adapter = nn.Sequential(
             nn.Linear(latent_dim, hidden_size * 2),
-            nn.LayerNorm(hidden_size * 2),
             nn.GELU(),
             nn.Linear(hidden_size * 2, hidden_size),
         )
+        self.residual_proj = nn.Linear(latent_dim, hidden_size)
         self.position_embed = nn.Parameter(
             torch.randn(1, max_latent_len, hidden_size) * 0.02
         )
@@ -105,7 +106,10 @@ class LatentEncoder(nn.Module):
             latents = latents.unsqueeze(1)
 
         batch_size, seq_len, _ = latents.shape
-        latent_emb = self.projection(latents)
+        normed = self.norm(latents)
+        adapted = self.adapter(normed)
+        residual = self.residual_proj(latents)
+        latent_emb = adapted + residual
         pos_emb = self.position_embed[:, :seq_len]
         return latent_emb + pos_emb
 

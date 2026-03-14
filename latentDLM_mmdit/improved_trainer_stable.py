@@ -1061,4 +1061,3 @@ class MultimodalDiffusionTrainer_new(nn.Module):
                 metrics["active_params_ratio"] = float(active / total)
 
         return total_loss, metrics
-

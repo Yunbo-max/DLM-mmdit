@@ -301,6 +301,36 @@ class MDLMLoss(Loss):
         return elbo, elbo, metrics
     
 
+class SimpleCELoss(Loss):
+    """Simple cross-entropy on masked positions, matching latentDLM_mmdit l2t loss."""
+    def __init__(self, config, tokenizer, noise_schedule):
+        super().__init__(config, tokenizer, noise_schedule)
+        self.mask_id = tokenizer.mask_token_id
+
+    def loss(self, logits, input_ids, attention_mask, z_t, t, *args, **kwargs):
+        mask = (z_t == self.mask_id)
+        vocab_size = logits.shape[-1]
+
+        ce_loss = F.cross_entropy(
+            logits.view(-1, vocab_size),
+            input_ids.view(-1),
+            ignore_index=-100,
+            reduction="none",
+        )
+
+        mask_flat = mask.view(-1).float()
+        mask_sum = mask_flat.sum().clamp(min=1)
+        loss = (ce_loss * mask_flat).sum() / mask_sum
+        loss = torch.clamp(loss, min=0.0, max=100.0)
+
+        # Return in expected format: (per-token loss, total loss, metrics)
+        per_token = (ce_loss * mask_flat).view_as(input_ids)
+        metrics = {
+            "rec_loss": loss.detach(),
+        }
+        return per_token, per_token, metrics
+
+
 def get_loss(config, tokenizer, noise_schedule):
     if config.loss.loss_type == "gidd":
         return GiddLoss(config, tokenizer, noise_schedule)
@@ -308,6 +338,8 @@ def get_loss(config, tokenizer, noise_schedule):
         return MDLMLoss(config, tokenizer, noise_schedule)
     elif config.loss.loss_type == "hdlm":
         return HDLMLoss(config, tokenizer, noise_schedule)
+    elif config.loss.loss_type == "simple_ce":
+        return SimpleCELoss(config, tokenizer, noise_schedule)
     elif config.loss.loss_type == "ar":
         return nn.CrossEntropyLoss(reduction="none")
     else:
