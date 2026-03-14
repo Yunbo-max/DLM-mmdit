@@ -428,7 +428,8 @@ def main(config):
             })
 
             if ((step + 1) % config.logging.log_freq) == 0:
-                metrics = {k: sum(d[k] for d in log_buffer) / len(log_buffer) for k in log_buffer[0]}
+                all_keys = set().union(*(d.keys() for d in log_buffer))
+                metrics = {k: sum(d[k] for d in log_buffer if k in d) / sum(1 for d in log_buffer if k in d) for k in all_keys}
                 logger.log({k: v for k, v in metrics.items()}, step=step)
                 logger.log({"trainer/global_step": step}, step=step)
                 log_buffer = []
