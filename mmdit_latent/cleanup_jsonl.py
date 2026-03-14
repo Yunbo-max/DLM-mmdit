@@ -1,8 +1,17 @@
-"""Remove JSONL entries that reference missing shards or out-of-bounds indices."""
+"""Remove JSONL entries that reference missing shards or out-of-bounds indices.
+Also handles corrupted lines with concatenated JSON objects."""
 import json
+import re
 import sys
 from pathlib import Path
 import numpy as np
+
+
+def split_concatenated_json(line):
+    """Split a line that may contain multiple concatenated JSON objects."""
+    # Match individual JSON objects: {"..."}
+    return re.findall(r'\{[^{}]*\}', line)
+
 
 def cleanup(data_root):
     data_root = Path(data_root)
@@ -19,38 +28,55 @@ def cleanup(data_root):
     print(f"\nFound {len(shard_sizes)} shards")
 
     for split in ["train_data.jsonl", "validation_data.jsonl"]:
+        # Try .bak first (from previous cleanup run), then original
+        bak = data_root / f"{split}.bak"
         src = data_root / split
-        if not src.exists():
+        if bak.exists():
+            read_from = bak
+        elif src.exists():
+            read_from = src
+        else:
             continue
 
         dst = data_root / f"{split}.clean"
         kept, removed = 0, 0
 
-        with open(src, 'r') as fin, open(dst, 'w') as fout:
+        with open(read_from, 'r') as fin, open(dst, 'w') as fout:
             for line in fin:
                 line = line.strip()
                 if not line:
                     continue
+
+                # Try parsing as single JSON first
                 try:
                     entry = json.loads(line)
+                    entries = [entry]
                 except json.JSONDecodeError:
-                    removed += 1
-                    continue
-                shard_id = entry.get("shard")
-                idx = entry.get("idx")
+                    # Line has concatenated JSON objects — split them
+                    entries = []
+                    for match in split_concatenated_json(line):
+                        try:
+                            entries.append(json.loads(match))
+                        except json.JSONDecodeError:
+                            removed += 1
 
-                if shard_id not in shard_sizes:
-                    removed += 1
-                    continue
-                if idx >= shard_sizes[shard_id]:
-                    removed += 1
-                    continue
+                for entry in entries:
+                    shard_id = entry.get("shard")
+                    idx = entry.get("idx")
 
-                fout.write(line)
-                kept += 1
+                    if shard_id not in shard_sizes:
+                        removed += 1
+                        continue
+                    if idx >= shard_sizes[shard_id]:
+                        removed += 1
+                        continue
+
+                    fout.write(json.dumps(entry) + "\n")
+                    kept += 1
 
         # Replace original
-        src.rename(data_root / f"{split}.bak")
+        if src.exists() and src != read_from:
+            src.unlink()
         dst.rename(src)
         print(f"\n{split}: kept {kept}, removed {removed}")
 
