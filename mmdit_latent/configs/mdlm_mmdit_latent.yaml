@@ -27,18 +27,11 @@ model:
   use_latent_conditioning: true
   conditioning_type: "mmdit"  # MMDiT joint attention conditioning
   latent_dim: 32  # Qwen3-Embedding-8B with dim=32
-  latent_hidden_size: 768  # Hidden dim for latent modality in MMDiT
+  latent_hidden_size: ${model.hidden_size}  # Match model hidden dim
   cluster_size: 0
   qk_rmsnorm: false
   max_latent_len: 1  # Number of latent tokens
-
-  # Transformer parameters
-  hidden_size: 768
-  n_blocks: 12
-  n_heads: 12
-  cond_dim: 768
   max_seq_len: 4096
-  dropout: 0.1
   t_eps: 1e-4
 
 # Training

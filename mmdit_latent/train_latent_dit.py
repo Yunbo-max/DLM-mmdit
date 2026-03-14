@@ -370,7 +370,7 @@ def main(config):
             loss, metrics = ddp_trainer(batch)
             
             if step % 10 == 0:  # Print every 10 steps
-                print(f"Step {step}: Loss = {loss.item():.4f}, LR = {curr_lr:.6f}")
+                print(f"Step {step}: Loss = {loss.item():.4f}, LR = {curr_lr:.2e}")
                 # if 'latent_norm' in metrics:
                 #     print(f"  Latent norm: {metrics['latent_norm']:.4f}, std: {metrics['latent_std']:.4f}")
 
