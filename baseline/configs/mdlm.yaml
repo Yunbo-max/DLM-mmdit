@@ -8,7 +8,8 @@ defaults:
 data:
   dataset_name: "json"
   data_files:
-    train: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/HDLM/openwebtext_processed/openwebtext.jsonl"
+    train: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/train_data.jsonl"
+    validation: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/validation_data.jsonl"
   streaming: false
   
 model:

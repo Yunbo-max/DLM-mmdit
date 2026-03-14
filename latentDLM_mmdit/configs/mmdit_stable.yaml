@@ -6,29 +6,21 @@ defaults:
   - _self_
 
 data:
-  # Preprocessed data settings
-  token_dir: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/preprocessed_data/qwen-embeddings-32/tokens/train"
-  latent_dir: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/preprocessed_data/qwen-embeddings-32/latents/train"
-
-  data_dir: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/preprocessed_data/qwen-embeddings-32"
+  # JSONL + sharded latent format (from mmdit_latent preprocessing)
+  latent_data_root: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data"
   data_files:
-    train: "train_data_with_tokens.json"
-    validation: "train_data_with_tokens.json"
+    train: "${data.latent_data_root}/train_data.jsonl"
+    validation: "${data.latent_data_root}/validation_data.jsonl"
 
-  # Data loading settings
-  load_tokens: true  # Load pre-tokenized .npz files
-  max_samples: 2000000  # Set to 2M for full dataset (lazy loading will handle this efficiently)
+  max_samples: 2000000
   max_val_samples: 1000
-  num_workers: 16
-  initial_scan_limit: 10000  # Only scan 10K files initially, training starts immediately
+  num_workers: 4
 
-  # Tokenizer info
-  tokenizer_path: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/preprocessed_data/local_data/tokenizers/bert-base-uncased"
-  cache_dir: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/data/huggingface"
+  # Tokenizer
+  tokenizer_path: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/models/bert-base-uncased"
   local_files_only: true
 
-  use_preprocessed: true
-  val_ratio: 0.05
+  use_preprocessed: false
 
 model:
   # Model type
@@ -108,7 +100,7 @@ logging:
   eval_freq: 10000
   save_freq: 50000
   num_eval_batches: 20
-  save_dir: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/saved"
+  save_dir: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/latentDLM_mmdit/results/saved"
 
 optimizer:
   name: "adamw"
@@ -121,16 +113,16 @@ optimizer:
   use_fused: true
 
 tokenizer:
-  path: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/preprocessed_data/local_data/tokenizers/bert-base-uncased"
-  cache_dir: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/data/huggingface"
+  path: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/models/bert-base-uncased"
+  cache_dir: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/latentDLM_mmdit/results/data/huggingface"
   local_files_only: true
   add_mask_token: true
 
 # Hydra settings
 hydra:
   run:
-    dir: /inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/saved/${logging.run_name}
+    dir: /inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/latentDLM_mmdit/results/saved/${logging.run_name}
   sweep:
-    dir: /inspire/hdd/global_user/zhangjiaquan-253108540222/latent/MM-LDLM/saved/${logging.run_name}
+    dir: /inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/latentDLM_mmdit/results/saved/${logging.run_name}
     subdir: .
 

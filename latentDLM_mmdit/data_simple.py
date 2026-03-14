@@ -390,19 +390,167 @@ def get_direct_dataloaders(config, tokenizer=None):
     return train_loader, val_loader
 
 
+class JsonlShardDataset(Dataset):
+    """Dataset for JSONL + sharded latent format (same as mmdit_latent/data_simple.py).
+
+    Reads train_data.jsonl with entries like: {"text": "...", "shard": 5, "idx": 42317}
+    Latents stored in latent_shards/shard_XXXX.npy (memory-mapped).
+    """
+
+    def __init__(self, data_path, data_root, tokenizer, max_length=4096,
+                 max_samples=None, max_cached_shards=8):
+        self.data_path = Path(data_path)
+        self.data_root = Path(data_root)
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self._shard_cache = {}
+        self._max_cached_shards = max_cached_shards
+
+        # Index JSONL by byte offsets
+        self.offsets = []
+        print(f"Indexing {self.data_path} ...")
+        with open(self.data_path, 'rb') as f:
+            while True:
+                offset = f.tell()
+                line = f.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                self.offsets.append(offset)
+                if max_samples and len(self.offsets) >= max_samples:
+                    break
+        print(f"Indexed {len(self.offsets)} samples (JSONL, lazy)")
+
+    def __len__(self):
+        return len(self.offsets)
+
+    def _get_sample(self, idx):
+        with open(self.data_path, 'r') as f:
+            f.seek(self.offsets[idx])
+            line = f.readline()
+            return json.loads(line)
+
+    def _load_shard(self, shard_id):
+        if shard_id in self._shard_cache:
+            return self._shard_cache[shard_id]
+        shard_path = self.data_root / "latent_shards" / f"shard_{shard_id:04d}.npy"
+        shard_data = np.load(shard_path, mmap_mode='r')
+        if len(self._shard_cache) >= self._max_cached_shards:
+            oldest = next(iter(self._shard_cache))
+            del self._shard_cache[oldest]
+        self._shard_cache[shard_id] = shard_data
+        return shard_data
+
+    def __getitem__(self, idx):
+        try:
+            item = self._get_sample(idx)
+            text = item.get('text', '')
+
+            tokenized = self.tokenizer(
+                text, truncation=True, padding='max_length',
+                max_length=self.max_length, return_tensors='pt'
+            )
+
+            input_ids = tokenized['input_ids'].squeeze(0)
+            attention_mask = tokenized['attention_mask'].squeeze(0)
+
+            # Load latent from shard
+            latent = torch.zeros(1, 32, dtype=torch.float)
+            if 'shard' in item and 'idx' in item:
+                shard_data = self._load_shard(item['shard'])
+                lat = shard_data[item['idx']]
+                latent = torch.from_numpy(lat.copy()).float().unsqueeze(0)
+
+            return {
+                'input_ids': input_ids,
+                'attention_mask': attention_mask.float(),
+                'latent': latent,
+            }
+        except Exception as e:
+            print(f"WARNING: Error loading sample {idx}: {e}")
+            return {
+                'input_ids': torch.zeros(self.max_length, dtype=torch.long),
+                'attention_mask': torch.zeros(self.max_length, dtype=torch.float),
+                'latent': torch.zeros(1, 32, dtype=torch.float),
+            }
+
+
+def get_jsonl_dataloaders(config, tokenizer):
+    """Get dataloaders for JSONL + sharded latent format."""
+    data_config = config.data
+    data_root = Path(data_config.latent_data_root)
+    max_seq_len = config.model.get('max_seq_len', 4096)
+
+    train_path = data_root / data_config.data_files.train.split('/')[-1]
+    val_path = data_root / data_config.data_files.validation.split('/')[-1]
+
+    # If paths are absolute, use them directly
+    if str(data_config.data_files.train).startswith('/'):
+        train_path = Path(data_config.data_files.train)
+    if str(data_config.data_files.validation).startswith('/'):
+        val_path = Path(data_config.data_files.validation)
+
+    train_ds = JsonlShardDataset(
+        train_path, data_root, tokenizer, max_length=max_seq_len,
+        max_samples=data_config.get('max_samples', None),
+    )
+    val_ds = JsonlShardDataset(
+        val_path, data_root, tokenizer, max_length=max_seq_len,
+        max_samples=data_config.get('max_val_samples', 1000),
+    )
+
+    def collate_fn(batch):
+        input_ids = torch.stack([item['input_ids'] for item in batch])
+        attention_mask = torch.stack([item['attention_mask'] for item in batch])
+        latents = torch.stack([item['latent'].squeeze(0) for item in batch])
+        return {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'latent': latents,
+        }
+
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        train_sampler = DistributedSampler(train_ds, shuffle=True, seed=config.training.seed)
+        val_sampler = DistributedSampler(val_ds, shuffle=False)
+    else:
+        train_sampler = None
+        val_sampler = None
+
+    num_workers = data_config.get('num_workers', 4)
+
+    train_loader = DataLoader(
+        train_ds, batch_size=config.training.train_batch_size,
+        sampler=train_sampler, shuffle=(train_sampler is None),
+        num_workers=num_workers, collate_fn=collate_fn,
+        pin_memory=True, drop_last=True,
+    )
+    val_loader = DataLoader(
+        val_ds, batch_size=config.training.eval_batch_size,
+        sampler=val_sampler, shuffle=False,
+        num_workers=min(4, num_workers), collate_fn=collate_fn,
+        pin_memory=True, drop_last=False,
+    )
+    return train_loader, val_loader
+
+
 # For backward compatibility
 def get_simple_dataloaders(config, tokenizer=None):
     """Main entry point - automatically chooses the right data loader."""
-    # Check which type of data we're using
     use_preprocessed = config.data.get('use_preprocessed', True)
-    
-    if use_preprocessed:
+
+    # Check if we have JSONL data (new format from mmdit_latent)
+    has_jsonl = hasattr(config.data, 'latent_data_root') and hasattr(config.data, 'data_files')
+
+    if has_jsonl and not use_preprocessed:
+        print("Using JSONL + sharded latent data loader")
+        return get_jsonl_dataloaders(config, tokenizer)
+    elif use_preprocessed:
         print("Using preprocessed file-based data loader")
         return get_direct_dataloaders(config, tokenizer)
     else:
         print("Using JSON-based data loader (needs tokenizer)")
-        # This would be your old JSON-based loader
-        # You can keep it for backward compatibility
         from latentDLM_mmdit.data_simple_legacy import get_json_dataloaders
         return get_json_dataloaders(config, tokenizer)
 

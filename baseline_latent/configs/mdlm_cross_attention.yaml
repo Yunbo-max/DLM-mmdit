@@ -7,12 +7,12 @@ defaults:
 data:
   dataset_name: "json"
   data_files:
-    train: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/HDLM/mmdit/data_root/train_data.json"
-    validation: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/HDLM/mmdit/data_root/train_data.json"
-  latent_data_root: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/HDLM/mmdit/data_root"
+    train: "${data.latent_data_root}/train_data.jsonl"
+    validation: "${data.latent_data_root}/validation_data.jsonl"
+  latent_data_root: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data"
   streaming: false
   pre_tokenize: true
-  max_length: 512
+  max_length: 4096
   sequence_packing: false
   
 # Model configuration - ADD cross-attention parameters
@@ -20,7 +20,7 @@ model:
   type: diffusion
   diffusion_process: mdlm
   use_latent_conditioning: true
-  latent_dim: 768
+  latent_dim: 32
   cluster_size: 0
   
   # Original DIT parameters (ensure they exist in base)
@@ -28,7 +28,7 @@ model:
   n_blocks: 12
   n_heads: 12
   cond_dim: 768
-  max_seq_len: 512
+  max_seq_len: 4096
   dropout: 0.1
   t_eps: 1e-4
   
