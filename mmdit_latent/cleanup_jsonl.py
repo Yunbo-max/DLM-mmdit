@@ -28,7 +28,14 @@ def cleanup(data_root):
 
         with open(src, 'r') as fin, open(dst, 'w') as fout:
             for line in fin:
-                entry = json.loads(line)
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    removed += 1
+                    continue
                 shard_id = entry.get("shard")
                 idx = entry.get("idx")
 
