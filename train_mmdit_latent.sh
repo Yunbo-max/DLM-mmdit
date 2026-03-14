@@ -354,7 +354,7 @@ fi
 
 # Add gradient accumulation if supported
 if [ "${GRAD_ACCUM_STEPS}" -gt 1 ]; then
-  OVERRIDES+=("training.gradient_accumulation_steps=${GRAD_ACCUM_STEPS}")
+  OVERRIDES+=("+training.gradient_accumulation_steps=${GRAD_ACCUM_STEPS}")
 fi
 
 # ============================================================
