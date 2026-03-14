@@ -49,7 +49,7 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
         dropout = config.get("dropout", 0.1)
         max_seq_len = config.get("max_seq_len", 512)
         qk_rmsnorm = config.get("qk_rmsnorm", True)
-        num_residual_streams = config.get("num_residual_streams", 2)
+        num_residual_streams = config.get("num_residual_streams", 1)
         latent_hidden_size = config.get("latent_hidden_size", hidden_size)
 
         self.hidden_size = hidden_size
