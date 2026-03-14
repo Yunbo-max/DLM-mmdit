@@ -61,7 +61,7 @@ def _check_gpu_health(local_rank: int) -> None:
         torch.cuda.synchronize(device=local_rank)
         mem_allocated = torch.cuda.memory_allocated(local_rank) / 1024**3
         mem_reserved = torch.cuda.memory_reserved(local_rank) / 1024**3
-        mem_total = torch.cuda.get_device_properties(local_rank).total_mem / 1024**3
+        mem_total = torch.cuda.get_device_properties(local_rank).total_memory / 1024**3
         print(f"GPU {local_rank}: {mem_allocated:.2f}GB allocated, "
               f"{mem_reserved:.2f}GB reserved, {mem_total:.1f}GB total")
     except RuntimeError as e:
