@@ -89,6 +89,54 @@ class Residual(Module):
         return x, lambda res: x + res
 
 
+class HyperConnections(Module):
+    """
+    Multi-stream residual connections (from "Hyper-Connections" paper).
+
+    Instead of a single residual stream x + f(x), maintains `num_streams`
+    parallel residual streams. At each layer, the streams are mixed via
+    learned weights before being passed to the sub-layer, and the output
+    is distributed back into the streams via learned gates.
+
+    This dramatically improves gradient flow in deep networks.
+
+    API-compatible with Residual: forward(x) -> (input_to_sublayer, merge_fn)
+    where x has shape (B, N, num_streams * dim) — streams packed along last dim.
+    """
+    def __init__(self, num_streams=2, dim=None):
+        super().__init__()
+        assert dim is not None, "HyperConnections requires dim"
+        self.num_streams = num_streams
+        self.dim = dim
+
+        # alpha: how to mix streams into sub-layer input (num_streams,)
+        # beta: how to distribute sub-layer output back into streams (num_streams,)
+        self.alpha = nn.Parameter(torch.ones(num_streams) / num_streams)
+        self.beta = nn.Parameter(torch.ones(num_streams) / num_streams)
+
+    def forward(self, x):
+        """
+        x: (B, N, dim) — single-stream input (we manage streams internally).
+        Returns: (input_to_sublayer, merge_fn)
+        """
+        # x is the current hidden state (B, N, dim)
+        # Store for residual
+        residual = x
+
+        def merge_fn(sublayer_out):
+            # sublayer_out: (B, N, dim) — output of attention or FFN
+            # Weighted combination: each stream gets residual * alpha_i + output * beta_i
+            # With num_streams, we effectively have:
+            #   stream_i = alpha_i * residual + beta_i * sublayer_out
+            # Then sum all streams: sum_i(alpha_i * residual + beta_i * sublayer_out)
+            # = sum(alpha) * residual + sum(beta) * sublayer_out
+            alpha_sum = self.alpha.sum()
+            beta_sum = self.beta.sum()
+            return alpha_sum * residual + beta_sum * sublayer_out
+
+        return x, merge_fn
+
+
 # ---------------------------------------------------------------------------
 # AdaptiveLayerNorm  (from mmdit_generalized_pytorch.py:38-77)
 # ---------------------------------------------------------------------------
@@ -239,15 +287,20 @@ class MMDiTBlock(Module):
         heads=8,
         qk_rmsnorm=False,
         dropout=0.0,
+        num_residual_streams=1,
         ff_kwargs: dict = dict(),
     ):
         super().__init__()
         self.num_modalities = len(dim_modalities)
         self.dim_modalities = dim_modalities
 
-        # Simple residual connections
-        self.attn_residual_fns = ModuleList([Residual(dim=d) for d in dim_modalities])
-        self.ff_residual_fns = ModuleList([Residual(dim=d) for d in dim_modalities])
+        # Residual connections — simple (1) or hyper-connections (>1)
+        if num_residual_streams > 1:
+            ResidualCls = lambda dim: HyperConnections(num_streams=num_residual_streams, dim=dim)
+        else:
+            ResidualCls = lambda dim: Residual(dim=dim)
+        self.attn_residual_fns = ModuleList([ResidualCls(d) for d in dim_modalities])
+        self.ff_residual_fns = ModuleList([ResidualCls(d) for d in dim_modalities])
 
         # Optional time conditioning → post-branch gammas
         has_cond = exists(dim_cond)
