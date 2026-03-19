@@ -7,7 +7,7 @@ defaults:
 
 data:
   # JSONL + sharded latent format (from mmdit_latent preprocessing)
-  latent_data_root: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data"
+  latent_data_root: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/DLM-mmdit/mmdit_latent/data"
   data_files:
     train: "${data.latent_data_root}/train_data.jsonl"
     validation: "${data.latent_data_root}/validation_data.jsonl"
@@ -17,7 +17,7 @@ data:
   num_workers: 4
 
   # Tokenizer
-  tokenizer_path: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/models/bert-base-uncased"
+  tokenizer_path: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/DLM-mmdit/mmdit_latent/data/models/bert-base-uncased"
   local_files_only: true
 
   use_preprocessed: false
@@ -29,10 +29,10 @@ model:
   latent_diffusion_process: "continuous"
 
   # Architecture parameters (reduced for 2x 4090 training)
-  hidden_size: 768
-  n_blocks: 12
-  n_heads: 12
-  cond_dim: 768
+  hidden_size: 256
+  n_blocks: 4
+  n_heads: 4
+  cond_dim: 256
   max_seq_len: 4096  # Match the preprocessed data sequence length
   dropout: 0.1
 
@@ -100,7 +100,7 @@ logging:
   eval_freq: 10000
   save_freq: 50000
   num_eval_batches: 20
-  save_dir: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/latentDLM_mmdit/results/saved"
+  save_dir: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/DLM-mmdit/latentDLM_mmdit/results/saved"
 
 optimizer:
   name: "adamw"
@@ -113,16 +113,16 @@ optimizer:
   use_fused: true
 
 tokenizer:
-  path: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/models/bert-base-uncased"
-  cache_dir: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/latentDLM_mmdit/results/data/huggingface"
+  path: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/DLM-mmdit/mmdit_latent/data/models/bert-base-uncased"
+  cache_dir: "/inspire/hdd/global_user/zhangjiaquan-253108540222/latent/DLM-mmdit/latentDLM_mmdit/results/data/huggingface"
   local_files_only: true
   add_mask_token: true
 
 # Hydra settings
 hydra:
   run:
-    dir: /inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/latentDLM_mmdit/results/saved/${logging.run_name}
+    dir: /inspire/hdd/global_user/zhangjiaquan-253108540222/latent/DLM-mmdit/latentDLM_mmdit/results/saved/${logging.run_name}
   sweep:
-    dir: /inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/latentDLM_mmdit/results/saved/${logging.run_name}
+    dir: /inspire/hdd/global_user/zhangjiaquan-253108540222/latent/DLM-mmdit/latentDLM_mmdit/results/saved/${logging.run_name}
     subdir: .
 

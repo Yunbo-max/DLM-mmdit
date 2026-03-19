@@ -17,6 +17,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.nn as nn
 
 import sys
+
 sys.path.append("..")
 sys.path.append(".")
 
@@ -37,8 +38,10 @@ from mmdit_latent.utils import (
     parse_dtype,
     calculate_flops_per_batch,
 )
+
 # IMPORT CORRECTLY: Use data_simple.py
 from mmdit_latent.data_simple import get_simple_dataloaders  # CHANGED THIS LINE!
+
 
 class Logger:
     def __init__(self, is_main_process):
@@ -62,8 +65,10 @@ def _check_gpu_health(local_rank: int) -> None:
         mem_allocated = torch.cuda.memory_allocated(local_rank) / 1024**3
         mem_reserved = torch.cuda.memory_reserved(local_rank) / 1024**3
         mem_total = torch.cuda.get_device_properties(local_rank).total_memory / 1024**3
-        print(f"GPU {local_rank}: {mem_allocated:.2f}GB allocated, "
-              f"{mem_reserved:.2f}GB reserved, {mem_total:.1f}GB total")
+        print(
+            f"GPU {local_rank}: {mem_allocated:.2f}GB allocated, "
+            f"{mem_reserved:.2f}GB reserved, {mem_total:.1f}GB total"
+        )
     except RuntimeError as e:
         print(f"WARNING: GPU {local_rank} health check failed: {e}")
 
@@ -78,8 +83,10 @@ def safe_barrier(local_rank: int = None) -> None:
         except RuntimeError as e:
             rank = dist.get_rank() if dist.is_initialized() else 0
             mem_allocated = torch.cuda.memory_allocated(local_rank) / 1024**3
-            print(f"[Rank {rank}] CUDA error before barrier: {e}, "
-                  f"GPU {local_rank} memory: {mem_allocated:.2f}GB")
+            print(
+                f"[Rank {rank}] CUDA error before barrier: {e}, "
+                f"GPU {local_rank} memory: {mem_allocated:.2f}GB"
+            )
             raise
     dist.barrier()
 
@@ -100,7 +107,7 @@ def main_process_first(local_rank: int = None):
 
 class LatentConditioningTrainer(nn.Module):
     """Trainer that handles latent conditioning."""
-    
+
     def __init__(self, config, model, tokenizer, noise_schedule, loss_fn, dtype):
         super().__init__()
         self.config = config
@@ -109,14 +116,14 @@ class LatentConditioningTrainer(nn.Module):
         self.noise_schedule = noise_schedule
         self.loss_fn = loss_fn
         self.dtype = dtype
-        
+
         self.device = next(model.parameters()).device
 
     def to(self, device=None, dtype=None):
         self.device = device if device else self.device
         self.dtype = dtype if dtype else self.dtype
         return super().to(device, dtype)
-        
+
     def forward(self, batch, force_transitting=False):
         batch_size = batch["input_ids"].size(0)
 
@@ -139,20 +146,21 @@ class LatentConditioningTrainer(nn.Module):
                     indices=z_t,
                     sigma=t,
                     latents=latents,
-                    attention_mask=batch["attention_mask"]
+                    attention_mask=batch["attention_mask"],
                 )
             else:
                 outputs = self.model(
-                    indices=z_t,
-                    sigma=t,
-                    attention_mask=batch["attention_mask"]
+                    indices=z_t, sigma=t, attention_mask=batch["attention_mask"]
                 )
 
             # Handle multiple outputs (for cluster models)
             if isinstance(outputs, tuple):
                 logits = outputs[0]
                 # Only pass cluster_logits for baseline_latent, not for MDLM
-                if self.config.model.diffusion_process == "baseline_latent" and len(outputs) > 1:
+                if (
+                    self.config.model.diffusion_process == "baseline_latent"
+                    and len(outputs) > 1
+                ):
                     cluster_logits = outputs[1]
                     loss_args = {
                         "logits": logits,
@@ -200,7 +208,7 @@ class LatentConditioningTrainer(nn.Module):
 @hydra.main(config_path="configs", config_name="mdlm_mmdit_latent", version_base="1.1")
 def main(config):
     try:
-        local_rank = int(os.environ['LOCAL_RANK'])
+        local_rank = int(os.environ["LOCAL_RANK"])
         torch.cuda.set_device(local_rank)
         dist.init_process_group(
             backend="nccl",
@@ -209,18 +217,20 @@ def main(config):
         )
         world_size = dist.get_world_size()
         global_rank = dist.get_rank()
-        is_main_process = (global_rank == 0)
+        is_main_process = global_rank == 0
     except RuntimeError:
         print("Distributed training not available, running on single device.")
         world_size = 1
         local_rank = 0
         global_rank = 0
         is_main_process = True
-    
+
     with open_dict(config):
         config.training.world_size = world_size
-    
-    is_distributed = torch.distributed.is_available() and torch.distributed.is_initialized()
+
+    is_distributed = (
+        torch.distributed.is_available() and torch.distributed.is_initialized()
+    )
 
     seed = config.training.seed + global_rank
     torch.manual_seed(seed)
@@ -243,25 +253,25 @@ def main(config):
     if config.training.resume is None:
         tokenizer = get_tokenizer(config)
         vocab_size = len(tokenizer)
-        
+
         # Use get_model() to select the correct model based on conditioning_type
         model = get_model(config, tokenizer, dtype=dtype)
         model = model.to(device)
-        
+
         noise_schedule = get_noise_schedule(config, tokenizer)
         loss_fn = get_loss(config, tokenizer, noise_schedule)
-        
+
         trainer = LatentConditioningTrainer(
             config=config,  # Added config parameter
             model=model,
             tokenizer=tokenizer,
             noise_schedule=noise_schedule,
             loss_fn=loss_fn,
-            dtype=dtype
+            dtype=dtype,
         ).to(device)
-        
+
         optimizer = get_optimizer(config, trainer)
-        
+
         state = TrainingState(
             epoch=0,
             epoch_start_step=0,
@@ -269,16 +279,12 @@ def main(config):
         )
     else:
         # Handle checkpoint loading
-        (
-            model,
-            noise_schedule,
-            tokenizer,
-            old_config,
-            trainer,
-            optimizer,
-            state
-        ) = load_checkpoint_for_training(config.training.resume, device=device, dtype=dtype)
-    
+        (model, noise_schedule, tokenizer, old_config, trainer, optimizer, state) = (
+            load_checkpoint_for_training(
+                config.training.resume, device=device, dtype=dtype
+            )
+        )
+
     # FIXED: Use get_simple_dataloaders directly
     with main_process_first(local_rank):
         train_dl, test_dl = get_simple_dataloaders(config, tokenizer)
@@ -299,8 +305,10 @@ def main(config):
         wandb.config.update({"pwd": pwd})
         print(f"Working directory: {pwd}")
 
-    non_emb_params = sum(p.numel() for p in model.blocks.parameters())
-    flops_per_batch = calculate_flops_per_batch(config, model, len(tokenizer), non_emb_params, method="hoffmann")
+    non_emb_params = sum(p.numel() for p in model.mmdit.parameters())
+    flops_per_batch = calculate_flops_per_batch(
+        config, model, len(tokenizer), non_emb_params, method="hoffmann"
+    )
     trainable_params = sum(p.numel() for p in trainer.parameters() if p.requires_grad)
 
     if config.training.compile_model:
@@ -309,13 +317,23 @@ def main(config):
         opt_trainer = trainer
 
     if is_distributed:
-        ddp_trainer = DDP(opt_trainer, device_ids=[device.index], find_unused_parameters=True)
+        ddp_trainer = DDP(
+            opt_trainer, device_ids=[device.index], find_unused_parameters=True
+        )
     else:
         ddp_trainer = opt_trainer
 
     if is_main_process:
-        non_emb_params_str = f"{non_emb_params / 1e6:.1f}M" if non_emb_params < 500 * 1e6 else f"{non_emb_params / 1e9:.1f}B"
-        trainable_params_str = f"{trainable_params / 1e6:.1f}M" if trainable_params < 500 * 1e6 else f"{trainable_params / 1e9:.1f}B"
+        non_emb_params_str = (
+            f"{non_emb_params / 1e6:.1f}M"
+            if non_emb_params < 500 * 1e6
+            else f"{non_emb_params / 1e9:.1f}B"
+        )
+        trainable_params_str = (
+            f"{trainable_params / 1e6:.1f}M"
+            if trainable_params < 500 * 1e6
+            else f"{trainable_params / 1e9:.1f}B"
+        )
         print(f"*** Starting DIT with Latent Conditioning ***")
         print(f"* World size: {world_size}")
         print(f"* FLOPS per batch: {flops_per_batch:.3g}")
@@ -336,11 +354,18 @@ def main(config):
     _ = next(iter(test_dl))
 
     if state.step - state.epoch_start_step > 0:
-        for _ in tqdm.trange(state.step - state.epoch_start_step, desc="Skipping batches", dynamic_ncols=True, disable=not is_main_process):
+        for _ in tqdm.trange(
+            state.step - state.epoch_start_step,
+            desc="Skipping batches",
+            dynamic_ncols=True,
+            disable=not is_main_process,
+        ):
             next(batch_iterator)
 
     curr_time = time.time()
-    trained_time = 0 if config.training.resume is None else (state.start_time - state.curr_time)
+    trained_time = (
+        0 if config.training.resume is None else (state.start_time - state.curr_time)
+    )
     state.start_time = curr_time - trained_time
     state.curr_time = curr_time
     prev_time = curr_time
@@ -350,7 +375,13 @@ def main(config):
     if config.training.resume is not None:
         load_rng_state(config.training.resume, global_rank)
 
-    with tqdm.tqdm(total=config.training.num_train_steps, initial=state.step, desc="Training", dynamic_ncols=True, disable=not is_main_process) as pbar:
+    with tqdm.tqdm(
+        total=config.training.num_train_steps,
+        initial=state.step,
+        desc="Training",
+        dynamic_ncols=True,
+        disable=not is_main_process,
+    ) as pbar:
         for step in range(state.step, config.training.num_train_steps):
             try:
                 batch = next(batch_iterator)
@@ -368,7 +399,7 @@ def main(config):
 
             batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
             loss, metrics = ddp_trainer(batch)
-            
+
             if step % 10 == 0:  # Print every 10 steps
                 print(f"Step {step}: Loss = {loss.item():.4f}, LR = {curr_lr:.2e}")
                 # if 'latent_norm' in metrics:
@@ -377,19 +408,28 @@ def main(config):
             # Skip backward pass if loss is invalid
             loss_val = loss.item()
             if torch.isnan(loss) or torch.isinf(loss):
-                print(f"WARNING: Invalid loss ({loss_val}) at step {step}, skipping update")
+                print(
+                    f"WARNING: Invalid loss ({loss_val}) at step {step}, skipping update"
+                )
                 optimizer.zero_grad()
                 norm = torch.tensor(0.0)
             else:
                 (loss * config.loss.loss_scale).backward()
 
-                if config.optimizer.grad_clip_norm and config.optimizer.grad_clip_norm > 0:
-                    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optimizer.grad_clip_norm)
+                if (
+                    config.optimizer.grad_clip_norm
+                    and config.optimizer.grad_clip_norm > 0
+                ):
+                    norm = torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), config.optimizer.grad_clip_norm
+                    )
                 else:
                     norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1e6)
 
                 if torch.isnan(norm) or torch.isinf(norm):
-                    print(f"WARNING: Invalid gradient norm ({norm.item():.4f}) at step {step}, zeroing grads")
+                    print(
+                        f"WARNING: Invalid gradient norm ({norm.item():.4f}) at step {step}, zeroing grads"
+                    )
                     for param in model.parameters():
                         if param.grad is not None:
                             param.grad = None
@@ -400,10 +440,15 @@ def main(config):
                     optimizer.zero_grad()
 
             # Logging
-            batch_tokens = batch.get("attention_mask", torch.ones_like(batch["input_ids"])).sum().item() * config.training.world_size
+            batch_tokens = (
+                batch.get("attention_mask", torch.ones_like(batch["input_ids"]))
+                .sum()
+                .item()
+                * config.training.world_size
+            )
             batch_flops = flops_per_batch * config.training.world_size
             total_batch_size = batch["input_ids"].size(0) * config.training.world_size
-            
+
             state.total_tokens += batch_tokens
             state.total_flops += batch_flops
 
@@ -411,25 +456,34 @@ def main(config):
             step_time = curr_time - prev_time
             prev_time = curr_time
 
-            log_buffer.append({
-                "train/loss": loss.item(),
-                "train/lr": curr_lr,
-                "train/step": step + 1,
-                "train/grad_norm": norm.item(),
-                "train/epoch": step / len(train_dl),
-                "train/total_tokens": state.total_tokens,
-                "train/total_flops": state.total_flops,
-                "train/tokens_per_sec": batch_tokens / step_time,
-                "train/flops_per_sec": batch_flops / step_time,
-                "train/samples_per_sec": total_batch_size / step_time,
-                "train/it_per_sec": 1 / step_time,
-                "train/avg_it_per_sec": (step + 1) / (curr_time - state.start_time),
-                **{f"train/{k}": v.item() if isinstance(v, torch.Tensor) else v for k, v in metrics.items()},
-            })
+            log_buffer.append(
+                {
+                    "train/loss": loss.item(),
+                    "train/lr": curr_lr,
+                    "train/step": step + 1,
+                    "train/grad_norm": norm.item(),
+                    "train/epoch": step / len(train_dl),
+                    "train/total_tokens": state.total_tokens,
+                    "train/total_flops": state.total_flops,
+                    "train/tokens_per_sec": batch_tokens / step_time,
+                    "train/flops_per_sec": batch_flops / step_time,
+                    "train/samples_per_sec": total_batch_size / step_time,
+                    "train/it_per_sec": 1 / step_time,
+                    "train/avg_it_per_sec": (step + 1) / (curr_time - state.start_time),
+                    **{
+                        f"train/{k}": v.item() if isinstance(v, torch.Tensor) else v
+                        for k, v in metrics.items()
+                    },
+                }
+            )
 
             if ((step + 1) % config.logging.log_freq) == 0:
                 all_keys = set().union(*(d.keys() for d in log_buffer))
-                metrics = {k: sum(d[k] for d in log_buffer if k in d) / sum(1 for d in log_buffer if k in d) for k in all_keys}
+                metrics = {
+                    k: sum(d[k] for d in log_buffer if k in d)
+                    / sum(1 for d in log_buffer if k in d)
+                    for k in all_keys
+                }
                 logger.log({k: v for k, v in metrics.items()}, step=step)
                 logger.log({"trainer/global_step": step}, step=step)
                 log_buffer = []
@@ -443,14 +497,28 @@ def main(config):
                     eval_metrics = {}
                     eval_loss = 0
                     num_eval_samples = 0
-                    for i, test_batch in enumerate(tqdm.tqdm(test_dl, desc="Eval", dynamic_ncols=True, total=config.logging.num_eval_batches, disable=not is_main_process)):
+                    for i, test_batch in enumerate(
+                        tqdm.tqdm(
+                            test_dl,
+                            desc="Eval",
+                            dynamic_ncols=True,
+                            total=config.logging.num_eval_batches,
+                            disable=not is_main_process,
+                        )
+                    ):
                         bs = test_batch["input_ids"].size(0)
 
-                        test_batch = {k: v.to(device, non_blocking=True) for k, v in test_batch.items()}
+                        test_batch = {
+                            k: v.to(device, non_blocking=True)
+                            for k, v in test_batch.items()
+                        }
                         loss, metrics = ddp_trainer(test_batch)
 
                         for k, v in metrics.items():
-                            eval_metrics[k] = eval_metrics.get(k, 0) + (v.item() if isinstance(v, torch.Tensor) else v) * bs
+                            eval_metrics[k] = (
+                                eval_metrics.get(k, 0)
+                                + (v.item() if isinstance(v, torch.Tensor) else v) * bs
+                            )
 
                         eval_loss += loss.item() * bs
                         num_eval_samples += bs
@@ -459,11 +527,17 @@ def main(config):
                             break
 
                     eval_elapsed_time = time.time() - eval_start_time
-                    logger.log({
-                        "eval/loss": eval_loss / num_eval_samples,
-                        "eval/time_taken": eval_elapsed_time,
-                        **{f"eval/{k}": v / num_eval_samples for k, v in eval_metrics.items()},
-                    }, step=step)
+                    logger.log(
+                        {
+                            "eval/loss": eval_loss / num_eval_samples,
+                            "eval/time_taken": eval_elapsed_time,
+                            **{
+                                f"eval/{k}": v / num_eval_samples
+                                for k, v in eval_metrics.items()
+                            },
+                        },
+                        step=step,
+                    )
                     model.train()
 
             # Save checkpoint

@@ -358,11 +358,7 @@ def main(config):
 
     # ---------------- Data ----------------
     with main_process_first(local_rank):
-        if config.data.get("load_tokens", True):
-            # We don't need tokenizer for data loading when using pre-tokenized
-            train_dl, test_dl = get_simple_dataloaders(config, tokenizer=None)
-        else:
-            train_dl, test_dl = get_simple_dataloaders(config, tokenizer)
+        train_dl, test_dl = get_simple_dataloaders(config, tokenizer)
 
     max_lr = config.optimizer.lr
 
@@ -409,7 +405,7 @@ def main(config):
             opt_trainer,
             device_ids=[local_rank],
             output_device=local_rank,
-            find_unused_parameters=False,
+            find_unused_parameters=True,
         )
 
         # Check for CUDA errors after DDP initialization

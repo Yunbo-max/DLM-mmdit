@@ -1,11 +1,9 @@
 """
 MMDiT-based model with latent conditioning as a second modality in joint attention.
 
-Instead of conditioning via AdaLN additive modulation (baseline approach), the latent
-becomes a second modality in MMDiT's joint attention mechanism.
-
-When hyper-connections package is installed, uses ManifoldConstrainedHyperConnections
-for multi-stream residual connections (matching latentDLM_mmdit architecture).
+Uses the external mmdit package (from mmdit.mmdit_generalized_pytorch) instead of
+internal copies. This ensures consistency with latentDLM_mmdit and uses the
+latest hyper-connections implementation.
 """
 
 import math
@@ -22,10 +20,16 @@ from .dit import (
     DDitFinalLayer,
     modulate_fused,
 )
-from .mmdit_block import MMDiTBlock, RMSNorm, has_hyper_connections
 
-# Import expand/reduce stream functions from local vendored copy
-from .hyper_connections import get_expand_reduce_stream_functions
+try:
+    from mmdit.mmdit_generalized_pytorch import MMDiT
+
+    has_external_mmdit = True
+    print("Using external mmdit package (mmdit.mmdit_generalized_pytorch.MMDiT)")
+except ImportError as e:
+    print(f"ERROR: Could not import external mmdit package: {e}")
+    print("Please install: pip install mmdit")
+    raise
 
 
 class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixin):
@@ -35,9 +39,13 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
     Text tokens and latent tokens attend to each other via joint attention
     at every block, with per-modality FFN and adaptive layer norms conditioned
     on the diffusion timestep.
+
+    Uses external mmdit.MMDiT from the mmdit package.
     """
 
-    def __init__(self, config, vocab_size: int, latent_dim: int = 768, cluster_size: int = 100):
+    def __init__(
+        self, config, vocab_size: int, latent_dim: int = 768, cluster_size: int = 100
+    ):
         super().__init__()
         if type(config) == dict:
             config = omegaconf.OmegaConf.create(config)
@@ -46,7 +54,7 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
         self.vocab_size = vocab_size
         self.latent_dim = latent_dim
         self.cluster_size = cluster_size
-        self.rounded_vocab_size = vocab_size + cluster_size + (128 - (vocab_size + cluster_size) % 128) % 128
+        self.rounded_vocab_size = vocab_size
 
         hidden_size = config.hidden_size
         cond_dim = config.cond_dim
@@ -61,20 +69,6 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
         self.hidden_size = hidden_size
         self.latent_hidden_size = latent_hidden_size
         self.num_residual_streams = num_residual_streams
-
-        # --- Stream expand/reduce for hyper-connections ---
-        if num_residual_streams > 1 and has_hyper_connections:
-            self.expand_streams, self.reduce_streams = get_expand_reduce_stream_functions(
-                num_residual_streams, disable=False
-            )
-            self.use_hyper_connections = True
-            print(f"Using ManifoldConstrainedHyperConnections with {num_residual_streams} streams")
-        else:
-            self.expand_streams = nn.Identity()
-            self.reduce_streams = nn.Identity()
-            self.use_hyper_connections = False
-            if num_residual_streams > 1:
-                print("WARNING: hyper-connections package not installed, falling back to simple residuals")
 
         # --- Text pathway ---
         self.vocab_embed = EmbeddingLayer(hidden_size, self.rounded_vocab_size)
@@ -94,24 +88,19 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
         self.null_latent = nn.Parameter(torch.zeros(1, 1, latent_hidden_size))
         nn.init.trunc_normal_(self.null_latent, std=0.02)
 
-        # --- MMDiT blocks ---
-        dim_head = hidden_size // n_heads
-        blocks = []
-        for _ in range(n_blocks):
-            blocks.append(MMDiTBlock(
-                dim_modalities=(hidden_size, latent_hidden_size),
-                dim_cond=cond_dim,
-                dim_head=dim_head,
-                heads=n_heads,
-                qk_rmsnorm=qk_rmsnorm,
-                dropout=dropout,
-                num_residual_streams=num_residual_streams,
-            ))
-        self.blocks = nn.ModuleList(blocks)
-
-        # --- Final norms (matching external MMDiT) ---
-        self.text_final_norm = RMSNorm(hidden_size)
-        self.latent_final_norm = RMSNorm(latent_hidden_size)
+        # --- MMDiT backbone (external package) ---
+        self.mmdit = MMDiT(
+            depth=n_blocks,
+            dim_modalities=(
+                hidden_size,
+                latent_hidden_size,
+            ),
+            dim_cond=cond_dim,
+            dim_head=hidden_size // n_heads,
+            heads=n_heads,
+            qk_rmsnorm=qk_rmsnorm,
+            num_residual_streams=num_residual_streams,
+        )
 
         # --- Output layer (text only) ---
         self.output_layer = DDitFinalLayer(
@@ -124,6 +113,13 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
             )
         else:
             self.output_layer_clusters = None
+
+        print(f"Initialized MMDiTWithLatentConditioning with external mmdit:")
+        print(f"  Vocab size: {self.rounded_vocab_size}")
+        print(f"  Hidden size: {hidden_size}")
+        print(f"  Latent dim: {latent_dim}")
+        print(f"  MMDiT depth: {n_blocks}")
+        print(f"  Residual streams: {num_residual_streams}")
 
     def forward(self, indices, sigma, latents=None, attention_mask=None):
         """
@@ -141,9 +137,10 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
         B, S = indices.shape
 
         # --- Timestep conditioning ---
-        sigma_float = sigma.float() if sigma.dtype != torch.float32 else sigma
-        c = F.silu(self.sigma_map(sigma_float))
-        c = c.to(dtype=self.vocab_embed.embedding.dtype)
+        model_dtype = self.vocab_embed.embedding.dtype
+        sigma_dtype = sigma.float() if sigma.dtype != torch.float32 else sigma
+        sigma_bf16 = sigma_dtype.to(dtype=model_dtype)
+        c = F.silu(self.sigma_map(sigma_bf16))
 
         # --- Text tokens ---
         text_tokens = self.vocab_embed(indices) + self.text_pos_embed[:, :S]
@@ -154,32 +151,22 @@ class MMDiTWithLatentConditioning(nn.Module, huggingface_hub.PyTorchModelHubMixi
                 latents = latents.unsqueeze(1)  # (B, 1, latent_dim)
             latent_tokens = self.latent_encoder(latents)  # (B, L, latent_hidden_size)
         else:
-            latent_tokens = self.null_latent.expand(B, -1, -1)  # (B, 1, latent_hidden_size)
+            latent_tokens = self.null_latent.expand(
+                B, -1, -1
+            )  # (B, 1, latent_hidden_size)
 
         # --- Build masks ---
         text_mask = attention_mask.bool() if attention_mask is not None else None
-        latent_mask = torch.ones(B, latent_tokens.shape[1], device=indices.device, dtype=torch.bool)
+        latent_mask = torch.ones(
+            B, latent_tokens.shape[1], device=indices.device, dtype=torch.bool
+        )
 
-        # --- Expand streams for hyper-connections ---
-        # mHCv2 expand: (B, N, D) -> (B, N, S, D)
-        text_tokens = self.expand_streams(text_tokens)
-        latent_tokens = self.expand_streams(latent_tokens)
-
-        # --- Run through MMDiT blocks ---
-        for block in self.blocks:
-            text_tokens, latent_tokens = block(
-                modality_tokens=(text_tokens, latent_tokens),
-                modality_masks=(text_mask, latent_mask),
-                time_cond=c,
-            )
-
-        # --- Reduce streams ---
-        # mHCv2 reduce: (B, N, S, D) -> (B, N, D) via sum
-        text_tokens = self.reduce_streams(text_tokens)
-        latent_tokens = self.reduce_streams(latent_tokens)
-
-        # --- Final norms ---
-        text_tokens = self.text_final_norm(text_tokens)
+        # --- Run through MMDiT blocks (external handles expand/reduce internally) ---
+        text_tokens, latent_tokens = self.mmdit(
+            modality_tokens=(text_tokens, latent_tokens),
+            modality_masks=(text_mask, latent_mask),
+            time_cond=c,
+        )
 
         # --- Output (text only, discard latent) ---
         x1 = self.output_layer(text_tokens, c)
