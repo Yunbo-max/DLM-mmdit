@@ -305,9 +305,12 @@ def main(config):
             })
 
             if ((step + 1) % config.logging.log_freq) == 0:
-                metrics = {k: sum(d[k] for d in log_buffer) / len(log_buffer) for k in log_buffer[0]}
+                all_keys = set().union(*(d.keys() for d in log_buffer))
+                metrics = {k: sum(d[k] for d in log_buffer if k in d) / sum(1 for d in log_buffer if k in d) for k in all_keys}
                 logger.log({k: v for k, v in metrics.items()}, step=step)
                 logger.log({"trainer/global_step": step}, step=step)
+                if is_main_process:
+                    print(f"Step {step + 1}: Loss = {metrics.get('train/loss', 0):.4f}, LR = {metrics.get('train/lr', 0):.2e}")
                 log_buffer = []
 
             ### EVAL ###
