@@ -1,0 +1,40 @@
+# File: configs/mdlm_rwkv.yaml
+# MDLM with Bi-RWKV backbone (replaces DiT self-attention with Bi-WKV)
+defaults:
+  - logging: default
+  - data: owt
+  - model: small
+  - optimizer: adam
+  - _self_
+
+data:
+  dataset_name: "json"
+  data_files:
+    train: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/train_data.jsonl"
+    validation: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/validation_data.jsonl"
+  streaming: false
+
+model:
+  type: diffusion
+  backbone: rwkv  # Use Bi-RWKV instead of DiT
+  diffusion_process: mdlm
+  t_eps: 1e-4
+  key_norm: false
+  mlp_ratio: 4
+
+training:
+  resume: null
+  seed: 1
+  train_batch_size: 64
+  eval_batch_size: 64
+  num_train_steps: 1131_000
+  lr_schedule: cosine
+  warmup_steps: 10000
+  low_discrepancy_sampling: True
+  dtype: bf16
+  compile_model: false  # CUDA kernel doesn't support torch.compile
+
+loss:
+  loss_type: mdlm
+  loss_scale: 1.0
+  reduction: tokenmean

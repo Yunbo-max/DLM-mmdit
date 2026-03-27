@@ -6,7 +6,8 @@ This repository contains multiple approaches for latent-conditioned text diffusi
 |--------|-----------|-------------|-----------------|
 | **MMDiT-Latent** | `mmdit_latent/` | MMDiT + Hyper-Connections | Joint attention (2nd modality) |
 | **LatentDLM-MMDiT** | `latentDLM_mmdit/` | External MMDiT package | Joint attention + dual heads |
-| **Baseline** | `baseline/` | DIT | None (unconditional) |
+| **Baseline (DiT)** | `baseline/` | DIT (Self-Attention + FFN) | None (unconditional) |
+| **Baseline (Bi-RWKV)** | `baseline/` | Bi-WKV + Channel-Mix | None (unconditional) |
 | **Baseline-Latent** | `baseline_latent/` | DIT + AdaLN or Cross-Attention | AdaLN modulation / Cross-attn |
 
 ## Training Scripts
@@ -47,16 +48,30 @@ CUDA_VISIBLE_DEVICES=0 CONFIG_NAME=mmdit_stable LOSS_TYPE=l2t \
 Note: Requires `pip install mmdit` (installs hyper-connections automatically).
 Data paths are configured in `latentDLM_mmdit/configs/mmdit_stable.yaml`.
 
-### Baseline (no latent)
+### Baseline — MDLM (DiT backbone)
 
 ```bash
-# MDLM baseline
+# MDLM with DiT (self-attention + FFN)
 CUDA_VISIBLE_DEVICES=0 CONFIG_NAME=mdlm bash train_baseline.sh
 
 # Custom batch/LR
-CUDA_VISIBLE_DEVICES=0 TRAIN_BS=32 LEARNING_RATE=5e-4 \
+CUDA_VISIBLE_DEVICES=0 CONFIG_NAME=mdlm TRAIN_BS=32 LEARNING_RATE=5e-4 \
   bash train_baseline.sh
 ```
+
+### Baseline — MDLM-RWKV (Bi-RWKV backbone)
+
+```bash
+# MDLM with Bi-RWKV (Bi-WKV + Channel-Mix, replaces self-attention + FFN)
+CUDA_VISIBLE_DEVICES=0 CONFIG_NAME=mdlm_rwkv bash train_baseline.sh
+
+# Custom batch/LR
+CUDA_VISIBLE_DEVICES=0 CONFIG_NAME=mdlm_rwkv TRAIN_BS=32 LEARNING_RATE=5e-4 \
+  bash train_baseline.sh
+```
+
+Note: The Bi-WKV CUDA kernel auto-compiles on first run (requires CUDA toolkit).
+Set `compile_model: false` in config (already set) since CUDA kernels don't support `torch.compile`.
 
 ### Baseline-Latent (DIT + latent)
 
@@ -158,13 +173,14 @@ DLM-mmdit/
 
 ## Architecture Comparison
 
-| | Baseline DIT | Baseline-Latent (AdaLN) | Baseline-Latent (Cross-Attn) | MMDiT-Latent |
-|---|---|---|---|---|
-| **Latent injection** | None | Layer norm modulation | Text→latent cross-attention | Joint attention |
-| **Latent is a modality** | No | No | No | Yes |
-| **Attention type** | Self-attn | Self-attn | Self + cross-attn | Joint attn |
-| **Hyper-connections** | No | No | No | Yes (2 streams) |
-| **QK-RMSNorm** | No | No | No | Yes |
+| | Baseline DiT | Baseline Bi-RWKV | Baseline-Latent (AdaLN) | Baseline-Latent (Cross-Attn) | MMDiT-Latent |
+|---|---|---|---|---|---|
+| **Config** | `mdlm` | `mdlm_rwkv` | `mdlm_latent` | `mdlm_cross_attention` | `mdlm_mmdit_latent` |
+| **Sequence modeling** | Self-attention O(n^2) | Bi-WKV O(n) | Self-attention O(n^2) | Self + cross-attn | Joint attention |
+| **FFN** | GELU MLP | Channel-Mix (squared ReLU + gate) | GELU MLP | GELU MLP | GELU MLP |
+| **Latent injection** | None | None | Layer norm modulation | Text→latent cross-attn | Joint attention |
+| **Hyper-connections** | No | No | No | No | Yes (2 streams) |
+| **Complexity** | O(n^2) | O(n) | O(n^2) | O(n^2) | O(n^2) |
 
 ## Acknowledgements
 
