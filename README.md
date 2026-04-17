@@ -8,6 +8,7 @@ This repository contains multiple approaches for latent-conditioned text diffusi
 | **LatentDLM-MMDiT** | `latentDLM_mmdit/` | External MMDiT package | Joint attention + dual heads |
 | **Baseline (DiT)** | `baseline/` | DIT (Self-Attention + FFN) | None (unconditional) |
 | **Baseline (Bi-RWKV)** | `baseline/` | Bi-WKV + Channel-Mix | None (unconditional) |
+| **Baseline (Bi-GLA)** | `baseline/` | Gated Linear Attention + Channel-Mix | None (unconditional) |
 | **Baseline-Latent** | `baseline_latent/` | DIT + AdaLN or Cross-Attention | AdaLN modulation / Cross-attn |
 
 ## Training Scripts
@@ -72,6 +73,19 @@ CUDA_VISIBLE_DEVICES=0 CONFIG_NAME=mdlm_rwkv TRAIN_BS=32 LEARNING_RATE=5e-4 \
 
 Note: The Bi-WKV CUDA kernel auto-compiles on first run (requires CUDA toolkit).
 Set `compile_model: false` in config (already set) since CUDA kernels don't support `torch.compile`.
+
+### Baseline — MDLM-GLA (Bidirectional Gated Linear Attention)
+
+```bash
+# MDLM with Bi-GLA (data-dependent gates, better for random masking than RWKV)
+CUDA_VISIBLE_DEVICES=0 CONFIG_NAME=mdlm_gla bash train_baseline.sh
+
+# Custom settings
+CUDA_VISIBLE_DEVICES=0 CONFIG_NAME=mdlm_gla TRAIN_BS=32 bash train_baseline.sh
+```
+
+Pure PyTorch — no custom CUDA kernels needed. Data-dependent gates allow the model
+to learn when to remember/forget, making it better suited for MDLM's random masking.
 
 ### Baseline-Latent (DIT + latent)
 
@@ -173,14 +187,15 @@ DLM-mmdit/
 
 ## Architecture Comparison
 
-| | Baseline DiT | Baseline Bi-RWKV | Baseline-Latent (AdaLN) | Baseline-Latent (Cross-Attn) | MMDiT-Latent |
+| | Baseline DiT | Baseline Bi-RWKV | Baseline Bi-GLA | Baseline-Latent | MMDiT-Latent |
 |---|---|---|---|---|---|
-| **Config** | `mdlm` | `mdlm_rwkv` | `mdlm_latent` | `mdlm_cross_attention` | `mdlm_mmdit_latent` |
-| **Sequence modeling** | Self-attention O(n^2) | Bi-WKV O(n) | Self-attention O(n^2) | Self + cross-attn | Joint attention |
-| **FFN** | GELU MLP | Channel-Mix (squared ReLU + gate) | GELU MLP | GELU MLP | GELU MLP |
-| **Latent injection** | None | None | Layer norm modulation | Text→latent cross-attn | Joint attention |
-| **Hyper-connections** | No | No | No | No | Yes (2 streams) |
-| **Complexity** | O(n^2) | O(n) | O(n^2) | O(n^2) | O(n^2) |
+| **Config** | `mdlm` | `mdlm_rwkv` | `mdlm_gla` | `mdlm_latent` | `mdlm_mmdit_latent` |
+| **Sequence modeling** | Self-attention | Bi-WKV (fixed decay) | Bi-GLA (data-dependent gate) | Self-attention | Joint attention |
+| **FFN** | GELU MLP | Channel-Mix | Channel-Mix | GELU MLP | GELU MLP |
+| **Decay type** | N/A (full attention) | Fixed per channel | Data-dependent per token | N/A | N/A |
+| **Random masking** | Excellent | Weak (decay loses distant tokens) | Good (gates learn to keep/forget) | Excellent | Excellent |
+| **Complexity** | O(n^2) | O(n) | O(n) | O(n^2) | O(n^2) |
+| **CUDA kernel** | No | Yes (must compile) | No (pure PyTorch) | No | No |
 
 ## Acknowledgements
 

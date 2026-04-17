@@ -2,6 +2,7 @@ from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
 
 import baseline.models.dit as dit
 from baseline.models.dit_rwkv import DRWKV
+from baseline.models.dit_gla import DGLA
 
 try:
     import flash_attn
@@ -21,8 +22,11 @@ def get_tokenizer(config):
 
 
 def get_model(config, tokenizer, device=None, dtype=None):
-    if config.model.type == "diffusion" and config.model.get("backbone", "dit") == "rwkv":
+    backbone = config.model.get("backbone", "dit")
+    if config.model.type == "diffusion" and backbone == "rwkv":
         model = DRWKV(config, len(tokenizer), config.model.get("cluster_size", 0))
+    elif config.model.type == "diffusion" and backbone == "gla":
+        model = DGLA(config, len(tokenizer), config.model.get("cluster_size", 0))
     elif config.model.type == "diffusion":
         model = dit.DIT(config, len(tokenizer), config.model.get("cluster_size", 0))
     elif config.model.type == "autoregressive":
