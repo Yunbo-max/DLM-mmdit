@@ -1,0 +1,40 @@
+# File: configs/mdlm_rwkv7.yaml
+# MDLM with Bidirectional RWKV-7 "Goose" backbone
+# Features: matrix state, data-dependent decay, in-context learning
+defaults:
+  - logging: default
+  - data: owt
+  - model: small
+  - optimizer: adam
+  - _self_
+
+data:
+  dataset_name: "json"
+  data_files:
+    train: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/train_data.jsonl"
+    validation: "/inspire/hdd/project/future-reading/zhangjiaquan-253108540222/jiaquan/latent/DLM-mmdit/mmdit_latent/data/validation_data.jsonl"
+  streaming: false
+
+model:
+  type: diffusion
+  backbone: rwkv7  # Bidirectional RWKV-7
+  diffusion_process: mdlm
+  t_eps: 1e-4
+  mlp_ratio: 4
+
+training:
+  resume: null
+  seed: 1
+  train_batch_size: 32
+  eval_batch_size: 32
+  num_train_steps: 1131_000
+  lr_schedule: cosine
+  warmup_steps: 10000
+  low_discrepancy_sampling: True
+  dtype: bf16
+  compile_model: false  # CUDA kernel doesn't support torch.compile
+
+loss:
+  loss_type: mdlm
+  loss_scale: 1.0
+  reduction: tokenmean

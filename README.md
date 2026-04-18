@@ -87,6 +87,17 @@ CUDA_VISIBLE_DEVICES=0 CONFIG_NAME=mdlm_gla TRAIN_BS=32 bash train_baseline.sh
 Pure PyTorch — no custom CUDA kernels needed. Data-dependent gates allow the model
 to learn when to remember/forget, making it better suited for MDLM's random masking.
 
+### Baseline — MDLM-RWKV7 (Bidirectional RWKV-7 "Goose")
+
+```bash
+# MDLM with Bi-RWKV-7 (matrix state + data-dependent decay + in-context learning)
+CUDA_VISIBLE_DEVICES=0 CONFIG_NAME=mdlm_rwkv7 bash train_baseline.sh
+```
+
+RWKV-7 features over RWKV-4: matrix-valued state (N×N per head), data-dependent decay,
+in-context learning (state self-attention), value residual across layers.
+CUDA kernel auto-compiles on first run (bf16 support).
+
 ### Baseline-Latent (DIT + latent)
 
 ```bash
